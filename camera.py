@@ -83,21 +83,20 @@ class CAMERA :
     image_points = []
     object_points = []
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    for image_file in os.listdir(folder):
-        if image_file.endswith("jpg"):
-            # turn images to grayscale and find chessboard corners
-            img = cv2.imread(os.path.join(folder, image_file))
-            img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-            found, corners = cv2.findChessboardCorners(img_gray, (n_x, n_y))
-            if found:
-                self.callibration_done = False
-                corners2 = cv2.cornerSubPix(img_gray, corners, (11, 11), (-1, -1), criteria)
-                image_points.append(corners2)
-                object_points.append(objp)
-                if verbose:
-                    cv2.drawChessboardCorners(img, (n_x, n_y), corners, found)
-                    plt.imshow(img)
-                    plt.show()
+    directory =  Path(folder)
+    for image_file in directory.glob("*.jpg"):
+      img = cv2.imread(str( image_file))
+      img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+      found, corners = cv2.findChessboardCorners(img_gray, (n_x, n_y))
+      if found:
+          self.callibration_done = False
+          corners2 = cv2.cornerSubPix(img_gray, corners, (11, 11), (-1, -1), criteria)
+          image_points.append(corners2)
+          object_points.append(objp)
+          if verbose:
+              cv2.drawChessboardCorners(img, (n_x, n_y), corners, found)
+              plt.imshow(img)
+              plt.show()
 
     # pefrorm the calibration
     ret, self.cam_matrix, self.dist_coeffs, self.rvecs, self.tvecs = cv2.calibrateCamera(object_points, image_points, img_gray.shape[::-1], None, None)
