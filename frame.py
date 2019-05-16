@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from datetime import datetime
 
-yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
+# yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
 
 
 class FRAME :
@@ -46,6 +46,7 @@ class FRAME :
         self.pix_per_meter_x = 0
         self.pix_per_meter_y = 0
         self.perspective_done_at = 0
+        self.yolo =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
 
     def perspective_tfm(self ,  image) : 
         now  = datetime.utcnow()
@@ -114,7 +115,8 @@ class FRAME :
     def get_speed(self):
         return 30
     
-    def detect_objects(self):
+    def detect_objects(self, image):
+        out_boxes, out_scores, out_classes= self.yolo.determine_bbox(image) 
         return
     
     def find_distance(self) : 
