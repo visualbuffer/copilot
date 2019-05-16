@@ -191,14 +191,14 @@ class VEHICLE(OBSTACLES) :
   
     
     
-class TRAFFIC_LIGHTS(DETECTION) :
+class TRAFFIC_LIGHTS(OBSTACLES) :
   def __init__(self) :
     return None
   
   def detect_status(self):
     return None
     
-class TRAFFIC_SIGNS(DETECTION):
+class TRAFFIC_SIGNS(OBSTACLES):
   def __init__(self) :
     return None
   
