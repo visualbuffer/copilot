@@ -1,5 +1,6 @@
 from camera import CAMERA
 from yolo import YOLO
+import numpy as np
 import cv2
 from datetime import datetime
 
@@ -15,10 +16,10 @@ class FRAME :
         "speed": 0,
         "n_objects" :0,
         "camera" : CAMERA(),
-        "image":None
+        "image":None,
         "UNWARPED_SIZE" : [ 500, 600],
-        "WRAPPED_WIDTH" :  530
-        "lane_width" :  3.5
+        "WRAPPED_WIDTH" :  530,
+        "LANE_WIDTH" :  3.5
         }
 
     @classmethod
@@ -27,17 +28,20 @@ class FRAME :
             return cls._defaults[n]
         else:
             return "Unrecognized attribute name '" + n + "'"  
-        if not cls.image :
-            return "No image !!"
 
     def __init__(self, **kwargs):
-        self.UNWARPED_SIZEs :[float,float]
+        self.UNWARPED_SIZE :[int,int]
+        self.LANE_WIDTH :int
+        self.WRAPPED_WIDTH  :  int
         self.camera : CAMERA
         self.__dict__.update(self._defaults) # set up default values
         self.__dict__.update(kwargs) # and update with user overrides
-        self.speed =  self.getSpeed()
+        self.speed =  self.get_speed()
+        self.image : np.ndarray
+        if not self.image :
+            raise ValueError("No Image") 
         self.image =  self.camera.undistort(self.image)
-        self.size =  self.image.shape
+        self.size : [int , int] =  [self.image.shape[0] ,  self.image.shape[1] ]
         self.M  = None
         self.pix_per_meter_x = 0
         self.pix_per_meter_y = 0
@@ -47,9 +51,10 @@ class FRAME :
         now  = datetime.utcnow()
         if now - self.perspective_done_at > 10000 :
             self.calc_perspective()
-        return cv2.warpPerspective(image, self.M, self.UNWARPED_SIZEs)
+        return cv2.warpPerspective(image, self.M, self.UNWARPED_SIZE)
   
     def calc_perspective(self, verbose =  False):
+        roi = np.zeros((self.size[1], self.size[0]), dtype=np.uint8)
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         img_hsl = cv2.cvtColor(self.image, cv2.COLOR_RGB2HLS)
@@ -63,7 +68,6 @@ class FRAME :
                 outer = np.matmul(normal, normal.T)
                 Lhs += outer
                 Rhs += np.matmul(outer, point)
-                cv2.line(img, (x1,y1), (x2, y2),(255, 0, 0), thickness=2)
         vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs)
         top = vanishing_point[1] + 60
         bottom = self.size[1]-35
@@ -79,13 +83,13 @@ class FRAME :
         p4 = on_line(p1, vanishing_point, bottom)
         src_points = np.array([p1,p2,p3,p4], dtype=np.float32)
 
-        dst_points = np.array([[0, 0], self.UNWARPED_SIZEs[0], 0],
-                            [self.UNWARPED_SIZEs[0], self.UNWARPED_SIZEs[1]],
-                            [0, self.UNWARPED_SIZEs[1]]], dtype=np.float32)
+        dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
+                            [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
+                            [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
 
         self.M = cv2.getPerspectiveTransform(src_points, dst_points)
         min_wid = 1000
-        img = cv2.warpPerspective(self.image, self.M, self.UNWARPED_SIZEs)
+        img = cv2.warpPerspective(self.image, self.M, self.UNWARPED_SIZE)
         img_hsl = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
         mask = img_hsl[:,:,1]>128
         mask[:, :50]=0
@@ -97,8 +101,8 @@ class FRAME :
 
         if (x2-x1<min_wid):
             min_wid = x2-x1
-        self.pix_per_meter_x = min_wid/(12* meter_per_foot)
-        Lh = np.linalg.inv(np.matmul(M, self.camera.cam_matrix))
+        self.pix_per_meter_x = min_wid/self.LANE_WIDTH
+        Lh = np.linalg.inv(np.matmul(self.M, self.camera.cam_matrix))
         self.pix_per_meter_y = self.pix_per_meter_x * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
         if verbose :          
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
@@ -107,21 +111,21 @@ class FRAME :
             cv2.imshow(cv2.hconcat((img_orig, img)))
         return
     
-    def get_speed(self)
+    def get_speed(self):
         return 30
     
-    def detect_objects():
+    def detect_objects(self):
         return
     
-    def find_distance() : 
+    def find_distance(self) : 
         
         return
     
-    def map_to_previous() : 
+    def map_to_previous(self) : 
         return
     
     
-    def vehicle_speed() :
+    def vehicle_speed(self) :
         return
 
 class DETECTION:
@@ -153,14 +157,14 @@ class VEHICLE(DETECTION) :
   
     
     
-class TRAFFIC_LIGHTS(DETECTION)
+class TRAFFIC_LIGHTS(DETECTION) :
   def __init__(self) :
     return None
   
   def detect_status(self):
     return None
     
-class TRAFFIC_SIGNS(DETECTION)
+class TRAFFIC_SIGNS(DETECTION):
   def __init__(self) :
     return None
   
