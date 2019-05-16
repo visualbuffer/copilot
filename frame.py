@@ -5,7 +5,25 @@ import cv2
 from datetime import datetime
 
 # yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
-
+vehicles = [1,2,3,5,6,7,8]
+animals =[15,16,17,18,19,21,22,23,]
+humans =[0]
+obstructions =  humans + animals + vehicles
+classes = [#
+    'person','bicycle','car','motorbike','aeroplane','bus',\
+    'train','truck','boat','traffic light','fire hydrant','stop sign',\
+    'parking meter','bench','bird','cat','dog','horse',\
+    'sheep','cow','elephant', 'bear','zebra','giraffe',\
+    'backpack','umbrella','handbag','tie','suitcase','frisbee',\
+    'skis','snowboard','sports ball','kite','baseball bat',\
+    'baseball glove','skateboard','surfboard','tennis racket','bottle','wine glass',\
+    'cup','fork','knife','spoon','bowl','banana',\
+    'apple','sandwich','orange','broccoli','carrot','hot dog',\
+    'pizza','donut','cake','chair','sofa','pottedplant',\
+    'bed','diningtable','toilet','tvmonitor','laptop','mouse',\
+    'remote','keyboard','cell phone','microwave','oven','toaster',\
+    'sink','refrigerator','book','clock','vase','scissors',\
+    'teddy bear','hair drier','toothbrush' ]
 
 class FRAME :
 
@@ -47,6 +65,8 @@ class FRAME :
         self.pix_per_meter_y = 0
         self.perspective_done_at = 0
         self.yolo =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
+        self.first_detect = True
+        
 
     def perspective_tfm(self ,  image) : 
         now  = datetime.utcnow()
@@ -117,6 +137,15 @@ class FRAME :
     
     def detect_objects(self, image):
         out_boxes, out_scores, out_classes= self.yolo.determine_bbox(image) 
+        obst_idx =[ i  for i, c in out_classes if c in obstructions]  
+        out_boxes =  out_boxes[obst_idx,:]
+        out_scores =  out_scores[obst_idx]
+        out_classes = out_classes[obst_idx]
+        if not self.first_detect :
+            self.frame2frame()
+        return
+
+    def frame2frame(self):
         return
     
     def find_distance(self) : 
@@ -130,16 +159,19 @@ class FRAME :
     def vehicle_speed(self) :
         return
 
-class DETECTION:
+class OBSTACLES:
   def __init__(self , bbox, score, category,_id, image) :
     self.bbox = bbox
     self.score =  score
     self.category =  category
     self._id = _id
     self.image = image
+    self.first_detect =  False
+    self.gridx : int
+    self.gridy : int
     
 
-class VEHICLE(DETECTION) :
+class VEHICLE(OBSTACLES) :
   def __init__(self) :
     self.numplate=None
     self.rx = None
