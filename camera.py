@@ -87,77 +87,12 @@ class CAMERA :
     ret, self.cam_matrix, self.dist_coeffs, self.rvecs, self.tvecs = cv2.calibrateCamera(object_points, image_points, img_gray.shape[::-1], None, None)
     self.img_size  = img.shape
     
-  def undistort(self, image)
+  def undistort(self, image) :
+    if self.callibrate :
+      image = cv2.undistort(img, self.cam_matrix, self.dist_coeffs)
     return image
 
-class FRAME :
-  def __init__(self,image):
-    self.id =  id
-    self.first = first
-    self.speed =  self.getSpeed()
-  
-  def perspective_tfm():
-    return
-  
-  def get_speed(self)
-    return 30
-  
-  def detect_objects():
-    return
-  
-  def find_distance() : 
-    
-    return
-  
-  def map_to_previous() : 
-    return
-  
-  
-  def vehicle_speed() :
-    return
 
-class DETECTION:
-  def __init__(self , bbox, score, category,_id, image) :
-    self.bbox = bbox
-    self.score =  score
-    self.category =  category
-    self._id = _id
-    self.image = image
-    
-
-class VEHICLE(DETECTION) :
-  def __init__(self) :
-    self.numplate=None
-    self.rx = None
-    self.ry = None
-    self.vx = 0
-    self.first = True
-    
-  def detect_number_plate(self):
-    return None
-  
-  def detect_position(self) :
-    return None
-  
-  def detect_velocity(self) :
-    return None
-    
-  
-    
-    
-class TRAFFIC_LIGHTS(DETECTION)
-  def __init__(self) :
-    return None
-  
-  def detect_status(self):
-    return None
-    
-class TRAFFIC_SIGNS(DETECTION)
-  def __init__(self) :
-    return None
-  
-  def decipher(self):
-    return None
 
 class EVENT :
   def __init__():
