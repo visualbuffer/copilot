@@ -7,7 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1_BEDlHOdtbAEWSvPgI5Lp00ZydRk48QX
 """
 
-! git clone
+# ! git clone
 
 import cv2
 import os
@@ -17,43 +17,59 @@ import numpy as np
 import pickle
 from pathlib import Path
 
+
+
+
+
 class VIDEO :
-  def __init__(self , save = False, save_path = "./", anotate=False )
-  self.save  = save
-  self.save_path  = save_path
-  self.anotate  =  anotate
-  self.fps
 
-def calibrate(filename, silent = True):
-    images_path = ''
-    
+  _defaults = {
+        "id": 0,
+        "save": False,
+        "anotate": False,
+        "save_path" :'./images/',
+        "path" : "./video/",
+        "period" : 0.1
+        }
 
-    # setup object points
-    
+  @classmethod
+  def get_defaults(cls, n):
+      if n in cls._defaults:
+          return cls._defaults[n]
+      else:
+          return "Unrecognized attribute name '" + n + "'"  
 
-    # loop through provided images
-    
-    with open(filename, 'wb') as f:
-        pickle.dump(calib_data, f)
+  def __init__(self, **kwargs):
+    self.save : bool  
+    self.period : float
+    self.save_path : str  
+    self.anotate : bool 
+    self.fps : int
+    self.path : str
+    self.video : cv2.VideoCapture
+    self.__dict__.update(self._defaults) # set up default values
+    self.__dict__.update(kwargs) # and update with user overrides
+    self.video =  cv2.VideoCapture(self.path) 
+    self.fps =  self.video.get(cv2.CAP_PROP_FPS)
+    self.step =  int(self.period* self.fps)
 
-    if not silent:
-        for image_file in os.listdir(images_path):
-            if image_file.endswith("jpg"):
-                # show distorted images
-                img = mpimg.imread(os.path.join(images_path, image_file))
-                plt.imshow(cv2.undistort(img, mtx, dist))
-                plt.show()
+  def extract_frames(self):
+    count = 0
+    success = 1
 
-    return mtx, dist
+    while success: 
+      success, image = self.video.read() 
+      if  count  % self.step == 0 :
 
-if __name__ == '__main__':
-    calibrate(CALIB_FILE_NAME, True)
+        count += 1
+
+
 
 
 class CAMERA :
   
-  def __init__():
-    self.callibrate  = False
+  def __init__(self):
+    self.callibration_done  = False
     self.cam_matrix = None
     self.dist_coeffs= None
     self.img_size = None
@@ -70,11 +86,11 @@ class CAMERA :
     for image_file in os.listdir(folder):
         if image_file.endswith("jpg"):
             # turn images to grayscale and find chessboard corners
-            img = cv2.imread(os.path.join(images_path, image_file))
+            img = cv2.imread(os.path.join(folder, image_file))
             img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             found, corners = cv2.findChessboardCorners(img_gray, (n_x, n_y))
             if found:
-                self.callibrate = False
+                self.callibration_done = False
                 corners2 = cv2.cornerSubPix(img_gray, corners, (11, 11), (-1, -1), criteria)
                 image_points.append(corners2)
                 object_points.append(objp)
@@ -89,16 +105,16 @@ class CAMERA :
     
   def undistort(self, image) :
     if self.callibrate :
-      image = cv2.undistort(img, self.cam_matrix, self.dist_coeffs)
+      image = cv2.undistort(image, self.cam_matrix, self.dist_coeffs)
     return image
 
 
 
 class EVENT :
-  def __init__():
+  def __init__(self):
     # TAILGAITING ,  FCAS WARNING , LANE CHANGING, TRAFFIC LIGHT JUMP
-    self.time_stamp 
-    self.image_path
-    self.type
-    self.speed
-    self.coordinates
+    self.time_stamp : int
+    self.image_path : str
+    self.type : int
+    self.speed : float
+    self.coordinates : [float, float]
