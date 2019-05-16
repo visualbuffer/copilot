@@ -37,6 +37,15 @@ class YOLO(object):
             return "Unrecognized attribute name '" + n + "'"
 
     def __init__(self, **kwargs):
+
+        self.model_path: str
+        self.anchors_path: str
+        self.classes_path: str
+        self.score : float
+        self.iou : float
+        self.model_image_size : (int, int)
+        self.gpu_num : int
+
         self.__dict__.update(self._defaults) # set up default values
         self.__dict__.update(kwargs) # and update with user overrides
         self.class_names = self._get_class()
