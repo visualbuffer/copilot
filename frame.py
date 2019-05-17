@@ -66,6 +66,7 @@ class FRAME :
         self.perspective_done_at = 0
         self.yolo =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
         self.first_detect = True
+        self.trackers = []
         
 
     def perspective_tfm(self ,  image) : 
@@ -142,10 +143,48 @@ class FRAME :
         out_scores =  out_scores[obst_idx]
         out_classes = out_classes[obst_idx]
         if not self.first_detect :
-            self.frame2frame()
+            self.update_trackers(image)
         return
 
-    def frame2frame(self):
+    def calculate_position(self, bbox):
+        if (self.perspective_done_at > 0):
+            pos = np.array((bbox[0]/2+bbox[2]/2, bbox[3])).reshape(1, 1, -1)
+            dst = cv2.perspectiveTransform(pos, self.M).reshape(-1, 1)
+            return np.array((self.UNWARPED_SIZE[1]-dst[1])/self.pix_per_meter_y)
+        else:
+            return np.array([0])
+
+    def update_trackers(self, image):
+        boxes = []
+        color = (80, 220, 60)
+        fontface = cv2.FONT_HERSHEY_SIMPLEX
+        fontscale = 1
+        thickness = 1
+
+        for n, pair in enumerate(self.trackers):
+            tracker, car = pair
+            textsize, _baseline = cv2.getTextSize(
+                car, fontface, fontscale, thickness)
+            success, bbox = tracker.update(image)
+
+            if not success:
+                del self.trackers[n]
+                continue
+
+            boxes.append(bbox)  # Return updated box list
+
+            xmin = int(bbox[0])
+            ymin = int(bbox[1])
+            xmax = int(bbox[0] + bbox[2])
+            ymax = int(bbox[1] + bbox[3])
+            xmid = int(round((xmin+xmax)/2))
+            ymid = int(round((ymin+ymax)/2))
+            # determine velocity , rpx, rpy
+
+        return boxes, counters
+
+
+    def remove_tracked(self) :
         return
     
     def find_distance(self) : 
