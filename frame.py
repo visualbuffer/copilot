@@ -1,5 +1,5 @@
 from camera import CAMERA
-from yolo import YOLO
+# from yolo import YOLO
 import numpy as np
 import cv2
 from datetime import datetime
@@ -24,7 +24,6 @@ classes = [#
     'remote','keyboard','cell phone','microwave','oven','toaster',\
     'sink','refrigerator','book','clock','vase','scissors',\
     'teddy bear','hair drier','toothbrush' ]
-
 
 
 class OBSTACLE:
@@ -86,8 +85,8 @@ class FRAME :
         "speed": 0,
         "n_objects" :0,
         "camera" : CAMERA(),
-        "image":None,
-        "UNWARPED_SIZE" : [ 500, 600],
+        "image":cv2.imread("./images/test1.jpg"),
+        "UNWARPED_SIZE" : (500, 600),
         "WRAPPED_WIDTH" :  530,
         "LANE_WIDTH" :  3.5,
         "fps" :22
@@ -102,7 +101,7 @@ class FRAME :
 
     def __init__(self, **kwargs):
         self.fps:float
-        self.UNWARPED_SIZE :[int,int]
+        self.UNWARPED_SIZE :(int,int)
         self.LANE_WIDTH :int
         self.WRAPPED_WIDTH  :  int
         self.camera : CAMERA
@@ -110,15 +109,15 @@ class FRAME :
         self.__dict__.update(kwargs) # and update with user overrides
         self.speed =  self.get_speed()
         self.image : np.ndarray
-        if not self.image :
+        if  self.image.size ==0 :
             raise ValueError("No Image") 
         self.image =  self.camera.undistort(self.image)
-        self.size : [int , int] =  [self.image.shape[0] ,  self.image.shape[1] ]
+        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
         self.M  = None
         self.pix_per_meter_x = 0
         self.pix_per_meter_y = 0
         self.perspective_done_at = 0
-        self.yolo =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
+        self.yolo = [] # YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
         self.first_detect = True
         self.trackers = []
         self.obstacles :[OBSTACLE] =[]
@@ -130,13 +129,24 @@ class FRAME :
             self.calc_perspective()
         return cv2.warpPerspective(image, self.M, self.UNWARPED_SIZE)
   
-    def calc_perspective(self, verbose =  False):
-        roi = np.zeros((self.size[1], self.size[0]), dtype=np.uint8)
+    def calc_perspective(self, verbose =  True):
+        roi = np.zeros((self.size[0], self.size[1]), dtype=np.uint8) # 720 , 1280
+        roi_points = np.array([[0, self.size[0]-50],[self.size[1],self.size[0]-50],
+                    [self.size[1]//2,self.size[0]//2]], dtype=np.int32)
+        # roi_points = np.array([[0, self.size[1]-50],[self.size[0],self.size[1]-50],
+        #             [self.size[0]//2,self.size[1]//2+50]], dtype=np.int32)
+        cv2.fillPoly(roi, [roi_points], 1)
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         img_hsl = cv2.cvtColor(self.image, cv2.COLOR_RGB2HLS)
         edges = cv2.Canny(img_hsl[:, :, 1], 200, 100)
-        lines = cv2.HoughLinesP(edges*roi, 0.5, np.pi/180, 20, None, 180, 120)
+        edges2 = edges*roi
+        lines = cv2.HoughLinesP(edges*roi,rho = .5,theta = 45*np.pi/180,threshold = 10,minLineLength = 10,maxLineGap = 500)
+
+        
+        cv2.imwrite("edges.jpg",edges2)
+        cv2.imwrite("lines.jpg",lines)
+        # print(lines)
         for line in lines:
             for x1, y1, x2, y2 in line:
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
@@ -159,7 +169,7 @@ class FRAME :
         p3 = on_line(p2, vanishing_point, bottom)
         p4 = on_line(p1, vanishing_point, bottom)
         src_points = np.array([p1,p2,p3,p4], dtype=np.float32)
-
+        # print(src_points,vanishing_point)
         dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
                             [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
                             [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
@@ -179,13 +189,18 @@ class FRAME :
         if (x2-x1<min_wid):
             min_wid = x2-x1
         self.pix_per_meter_x = min_wid/self.LANE_WIDTH
-        Lh = np.linalg.inv(np.matmul(self.M, self.camera.cam_matrix))
+        if self.camera.callibration_done :
+            Lh = np.linalg.inv(np.matmul(self.M, self.camera.cam_matrix))
+        else:
+            Lh = np.linalg.inv(self.M)
         self.pix_per_meter_y = self.pix_per_meter_x * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
         if verbose :          
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
-            cv2.imshow(cv2.hconcat((img_orig, img)))
+            cv2.imwrite("POLY.jpg",img_orig)
+            cv2.imwrite("INPUT.jpg",img)
+            # cv2.imshow(cv2.hconcat((img_orig, cv2.resize(img, img_orig.shape))))
         return
     
     def get_speed(self):
@@ -278,4 +293,5 @@ class FRAME :
         return
 
 
-    
+frame  = FRAME()
+frame.calc_perspective()
