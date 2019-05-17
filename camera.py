@@ -103,7 +103,7 @@ class CAMERA :
     self.img_size  = img.shape
     
   def undistort(self, image) :
-    if self.callibrate :
+    if self.callibration_done :
       image = cv2.undistort(image, self.cam_matrix, self.dist_coeffs)
     return image
 
