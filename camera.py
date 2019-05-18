@@ -75,6 +75,7 @@ class CAMERA :
     self.img_size = None
     self.rvecs = None
     self.tvecs = None
+    self.callibrate()
     
   
   def callibrate(self , folder = 'camera_cal',n_x = 9, n_y = 6, verbose =   False):
@@ -89,7 +90,7 @@ class CAMERA :
       img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
       found, corners = cv2.findChessboardCorners(img_gray, (n_x, n_y))
       if found:
-          self.callibration_done = False
+          self.callibration_done = True
           corners2 = cv2.cornerSubPix(img_gray, corners, (11, 11), (-1, -1), criteria)
           image_points.append(corners2)
           object_points.append(objp)
