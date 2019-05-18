@@ -133,22 +133,22 @@ class FRAME :
         roi = np.zeros((self.size[0], self.size[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[0, self.size[0]-50],[self.size[1],self.size[0]-50],
                     [self.size[1]//2,self.size[0]//2]], dtype=np.int32)
-        # roi_points = np.array([[0, self.size[1]-50],[self.size[0],self.size[1]-50],
-        #             [self.size[0]//2,self.size[1]//2+50]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         img_hsl = cv2.cvtColor(self.image, cv2.COLOR_RGB2HLS)
         edges = cv2.Canny(img_hsl[:, :, 1], 200, 100)
         edges2 = edges*roi
-        lines = cv2.HoughLinesP(edges*roi,rho = .5,theta = 45*np.pi/180,threshold = 10,minLineLength = 10,maxLineGap = 500)
+        lines = cv2.HoughLinesP(edges*roi,rho = 10,theta = np.pi/180,threshold = 15,minLineLength = 100,maxLineGap = 15)
+
 
         
-        cv2.imwrite("edges.jpg",edges2)
-        cv2.imwrite("lines.jpg",lines)
+       
         # print(lines)
         for line in lines:
+            
             for x1, y1, x2, y2 in line:
+                cv2.line(edges2, (x1,y1),(x2,y2), (255, 0, 0), 1)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
                 normal /=np.linalg.norm(normal)
                 point = np.array([[x1],[y1]], dtype=np.float32)
@@ -194,10 +194,13 @@ class FRAME :
         else:
             Lh = np.linalg.inv(self.M)
         self.pix_per_meter_y = self.pix_per_meter_x * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
-        if verbose :          
+        if verbose : 
+            cv2.imwrite("edges.jpg",edges2)         
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
+
+            cv2.circle(img_orig,tuple(vanishing_point),10, color=(0,0,255), thickness=5)
             cv2.imwrite("POLY.jpg",img_orig)
             cv2.imwrite("INPUT.jpg",img)
             # cv2.imshow(cv2.hconcat((img_orig, cv2.resize(img, img_orig.shape))))
