@@ -1,190 +1,280 @@
-"""
-Retrain the YOLO model for your own dataset.
-"""
+#! /usr/bin/env python
 
+import argparse
+import os
 import numpy as np
-import keras.backend as K
-from keras.layers import Input, Lambda
-from keras.models import Model
+import json
+from voc import parse_voc_annotation
+from yolo import create_yolov3_model, dummy_loss
+from generator import BatchGenerator
+from utils.utils import normalize, evaluate, makedirs
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
+from callbacks import CustomModelCheckpoint, CustomTensorBoard
+from utils.multi_gpu_model import multi_gpu_model
+import tensorflow as tf
+import keras
+from keras.models import load_model
 
-from yolo3.model import preprocess_true_boxes, yolo_body, tiny_yolo_body, yolo_loss
-from yolo3.utils import get_random_data
+def create_training_instances(
+    train_annot_folder,
+    train_image_folder,
+    train_cache,
+    valid_annot_folder,
+    valid_image_folder,
+    valid_cache,
+    labels,
+):
+    # parse annotations of the training set
+    train_ints, train_labels = parse_voc_annotation(train_annot_folder, train_image_folder, train_cache, labels)
 
-
-def _main():
-    annotation_path = 'train.txt'
-    log_dir = 'logs/000/'
-    classes_path = 'model_data/voc_classes.txt'
-    anchors_path = 'model_data/yolo_anchors.txt'
-    class_names = get_classes(classes_path)
-    num_classes = len(class_names)
-    anchors = get_anchors(anchors_path)
-
-    input_shape = (416,416) # multiple of 32, hw
-
-    is_tiny_version = len(anchors)==6 # default setting
-    if is_tiny_version:
-        model = create_tiny_model(input_shape, anchors, num_classes,
-            freeze_body=2, weights_path='model_data/tiny_yolo_weights.h5')
+    # parse annotations of the validation set, if any, otherwise split the training set
+    if os.path.exists(valid_annot_folder):
+        valid_ints, valid_labels = parse_voc_annotation(valid_annot_folder, valid_image_folder, valid_cache, labels)
     else:
-        model = create_model(input_shape, anchors, num_classes,
-            freeze_body=2, weights_path='model_data/yolo_weights.h5') # make sure you know what you freeze
+        print("valid_annot_folder not exists. Spliting the trainining set.")
 
-    logging = TensorBoard(log_dir=log_dir)
-    checkpoint = ModelCheckpoint(log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
-        monitor='val_loss', save_weights_only=True, save_best_only=True, period=3)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, verbose=1)
-    early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
+        train_valid_split = int(0.8*len(train_ints))
+        np.random.seed(0)
+        np.random.shuffle(train_ints)
+        np.random.seed()
 
-    val_split = 0.1
-    with open(annotation_path) as f:
-        lines = f.readlines()
-    np.random.seed(10101)
-    np.random.shuffle(lines)
-    np.random.seed(None)
-    num_val = int(len(lines)*val_split)
-    num_train = len(lines) - num_val
+        valid_ints = train_ints[train_valid_split:]
+        train_ints = train_ints[:train_valid_split]
 
-    # Train with frozen layers first, to get a stable loss.
-    # Adjust num epochs to your dataset. This step is enough to obtain a not bad model.
-    if True:
-        model.compile(optimizer=Adam(lr=1e-3), loss={
-            # use custom yolo_loss Lambda layer.
-            'yolo_loss': lambda y_true, y_pred: y_pred})
+    # compare the seen labels with the given labels in config.json
+    if len(labels) > 0:
+        overlap_labels = set(labels).intersection(set(train_labels.keys()))
 
-        batch_size = 32
-        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-        model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
-                steps_per_epoch=max(1, num_train//batch_size),
-                validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
-                validation_steps=max(1, num_val//batch_size),
-                epochs=50,
-                initial_epoch=0,
-                callbacks=[logging, checkpoint])
-        model.save_weights(log_dir + 'trained_weights_stage_1.h5')
+        print('Seen labels: \t'  + str(train_labels) + '\n')
+        print('Given labels: \t' + str(labels))
 
-    # Unfreeze and continue training, to fine-tune.
-    # Train longer if the result is not good.
-    if True:
-        for i in range(len(model.layers)):
-            model.layers[i].trainable = True
-        model.compile(optimizer=Adam(lr=1e-4), loss={'yolo_loss': lambda y_true, y_pred: y_pred}) # recompile to apply the change
-        print('Unfreeze all of the layers.')
+        # return None, None, None if some given label is not in the dataset
+        if len(overlap_labels) < len(labels):
+            print('Some labels have no annotations! Please revise the list of labels in the config.json.')
+            return None, None, None
+    else:
+        print('No labels are provided. Train on all seen labels.')
+        print(train_labels)
+        labels = train_labels.keys()
 
-        batch_size = 32 # note that more GPU memory is required after unfreezing the body
-        print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
-        model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
-            steps_per_epoch=max(1, num_train//batch_size),
-            validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
-            validation_steps=max(1, num_val//batch_size),
-            epochs=100,
-            initial_epoch=50,
-            callbacks=[logging, checkpoint, reduce_lr, early_stopping])
-        model.save_weights(log_dir + 'trained_weights_final.h5')
+    max_box_per_image = max([len(inst['object']) for inst in (train_ints + valid_ints)])
 
-    # Further training if needed.
+    return train_ints, valid_ints, sorted(labels), max_box_per_image
 
+def create_callbacks(saved_weights_name, tensorboard_logs, model_to_save):
+    makedirs(tensorboard_logs)
+    
+    early_stop = EarlyStopping(
+        monitor     = 'loss', 
+        min_delta   = 0.01, 
+        patience    = 5, 
+        mode        = 'min', 
+        verbose     = 1
+    )
+    checkpoint = CustomModelCheckpoint(
+        model_to_save   = model_to_save,
+        filepath        = saved_weights_name,# + '{epoch:02d}.h5', 
+        monitor         = 'loss', 
+        verbose         = 1, 
+        save_best_only  = True, 
+        mode            = 'min', 
+        period          = 1
+    )
+    reduce_on_plateau = ReduceLROnPlateau(
+        monitor  = 'loss',
+        factor   = 0.1,
+        patience = 2,
+        verbose  = 1,
+        mode     = 'min',
+        epsilon  = 0.01,
+        cooldown = 0,
+        min_lr   = 0
+    )
+    tensorboard = CustomTensorBoard(
+        log_dir                = tensorboard_logs,
+        write_graph            = True,
+        write_images           = True,
+    )    
+    return [early_stop, checkpoint, reduce_on_plateau, tensorboard]
 
-def get_classes(classes_path):
-    '''loads the classes'''
-    with open(classes_path) as f:
-        class_names = f.readlines()
-    class_names = [c.strip() for c in class_names]
-    return class_names
+def create_model(
+    nb_class, 
+    anchors, 
+    max_box_per_image, 
+    max_grid, batch_size, 
+    warmup_batches, 
+    ignore_thresh, 
+    multi_gpu, 
+    saved_weights_name, 
+    lr,
+    grid_scales,
+    obj_scale,
+    noobj_scale,
+    xywh_scale,
+    class_scale  
+):
+    if multi_gpu > 1:
+        with tf.device('/cpu:0'):
+            template_model, infer_model = create_yolov3_model(
+                nb_class            = nb_class, 
+                anchors             = anchors, 
+                max_box_per_image   = max_box_per_image, 
+                max_grid            = max_grid, 
+                batch_size          = batch_size//multi_gpu, 
+                warmup_batches      = warmup_batches,
+                ignore_thresh       = ignore_thresh,
+                grid_scales         = grid_scales,
+                obj_scale           = obj_scale,
+                noobj_scale         = noobj_scale,
+                xywh_scale          = xywh_scale,
+                class_scale         = class_scale
+            )
+    else:
+        template_model, infer_model = create_yolov3_model(
+            nb_class            = nb_class, 
+            anchors             = anchors, 
+            max_box_per_image   = max_box_per_image, 
+            max_grid            = max_grid, 
+            batch_size          = batch_size, 
+            warmup_batches      = warmup_batches,
+            ignore_thresh       = ignore_thresh,
+            grid_scales         = grid_scales,
+            obj_scale           = obj_scale,
+            noobj_scale         = noobj_scale,
+            xywh_scale          = xywh_scale,
+            class_scale         = class_scale
+        )  
 
-def get_anchors(anchors_path):
-    '''loads the anchors from a file'''
-    with open(anchors_path) as f:
-        anchors = f.readline()
-    anchors = [float(x) for x in anchors.split(',')]
-    return np.array(anchors).reshape(-1, 2)
+    # load the pretrained weight if exists, otherwise load the backend weight only
+    if os.path.exists(saved_weights_name): 
+        print("\nLoading pretrained weights.\n")
+        template_model.load_weights(saved_weights_name)
+    else:
+        template_model.load_weights("backend.h5", by_name=True)       
 
+    if multi_gpu > 1:
+        train_model = multi_gpu_model(template_model, gpus=multi_gpu)
+    else:
+        train_model = template_model      
 
-def create_model(input_shape, anchors, num_classes, load_pretrained=True, freeze_body=2,
-            weights_path='model_data/yolo_weights.h5'):
-    '''create the training model'''
-    K.clear_session() # get a new session
-    image_input = Input(shape=(None, None, 3))
-    h, w = input_shape
-    num_anchors = len(anchors)
+    optimizer = Adam(lr=lr, clipnorm=0.001)
+    train_model.compile(loss=dummy_loss, optimizer=optimizer)             
 
-    y_true = [Input(shape=(h//{0:32, 1:16, 2:8}[l], w//{0:32, 1:16, 2:8}[l], \
-        num_anchors//3, num_classes+5)) for l in range(3)]
+    return train_model, infer_model
 
-    model_body = yolo_body(image_input, num_anchors//3, num_classes)
-    print('Create YOLOv3 model with {} anchors and {} classes.'.format(num_anchors, num_classes))
+def _main_(args):
+    config_path = args.conf
 
-    if load_pretrained:
-        model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
-        print('Load weights {}.'.format(weights_path))
-        if freeze_body in [1, 2]:
-            # Freeze darknet53 body or freeze all but 3 output layers.
-            num = (185, len(model_body.layers)-3)[freeze_body-1]
-            for i in range(num): model_body.layers[i].trainable = False
-            print('Freeze the first {} layers of total {} layers.'.format(num, len(model_body.layers)))
+    with open(config_path) as config_buffer:    
+        config = json.loads(config_buffer.read())
 
-    model_loss = Lambda(yolo_loss, output_shape=(1,), name='yolo_loss',
-        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5})(
-        [*model_body.output, *y_true])
-    model = Model([model_body.input, *y_true], model_loss)
+    ###############################
+    #   Parse the annotations 
+    ###############################
+    train_ints, valid_ints, labels, max_box_per_image = create_training_instances(
+        config['train']['train_annot_folder'],
+        config['train']['train_image_folder'],
+        config['train']['cache_name'],
+        config['valid']['valid_annot_folder'],
+        config['valid']['valid_image_folder'],
+        config['valid']['cache_name'],
+        config['model']['labels']
+    )
+    print('\nTraining on: \t' + str(labels) + '\n')
 
-    return model
+    ###############################
+    #   Create the generators 
+    ###############################    
+    train_generator = BatchGenerator(
+        instances           = train_ints, 
+        anchors             = config['model']['anchors'],   
+        labels              = labels,        
+        downsample          = 32, # ratio between network input's size and network output's size, 32 for YOLOv3
+        max_box_per_image   = max_box_per_image,
+        batch_size          = config['train']['batch_size'],
+        min_net_size        = config['model']['min_input_size'],
+        max_net_size        = config['model']['max_input_size'],   
+        shuffle             = True, 
+        jitter              = 0.3, 
+        norm                = normalize
+    )
+    
+    valid_generator = BatchGenerator(
+        instances           = valid_ints, 
+        anchors             = config['model']['anchors'],   
+        labels              = labels,        
+        downsample          = 32, # ratio between network input's size and network output's size, 32 for YOLOv3
+        max_box_per_image   = max_box_per_image,
+        batch_size          = config['train']['batch_size'],
+        min_net_size        = config['model']['min_input_size'],
+        max_net_size        = config['model']['max_input_size'],   
+        shuffle             = True, 
+        jitter              = 0.0, 
+        norm                = normalize
+    )
 
-def create_tiny_model(input_shape, anchors, num_classes, load_pretrained=True, freeze_body=2,
-            weights_path='model_data/tiny_yolo_weights.h5'):
-    '''create the training model, for Tiny YOLOv3'''
-    K.clear_session() # get a new session
-    image_input = Input(shape=(None, None, 3))
-    h, w = input_shape
-    num_anchors = len(anchors)
+    ###############################
+    #   Create the model 
+    ###############################
+    if os.path.exists(config['train']['saved_weights_name']): 
+        config['train']['warmup_epochs'] = 0
+    warmup_batches = config['train']['warmup_epochs'] * (config['train']['train_times']*len(train_generator))   
 
-    y_true = [Input(shape=(h//{0:32, 1:16}[l], w//{0:32, 1:16}[l], \
-        num_anchors//2, num_classes+5)) for l in range(2)]
+    os.environ['CUDA_VISIBLE_DEVICES'] = config['train']['gpus']
+    multi_gpu = len(config['train']['gpus'].split(','))
 
-    model_body = tiny_yolo_body(image_input, num_anchors//2, num_classes)
-    print('Create Tiny YOLOv3 model with {} anchors and {} classes.'.format(num_anchors, num_classes))
+    train_model, infer_model = create_model(
+        nb_class            = len(labels), 
+        anchors             = config['model']['anchors'], 
+        max_box_per_image   = max_box_per_image, 
+        max_grid            = [config['model']['max_input_size'], config['model']['max_input_size']], 
+        batch_size          = config['train']['batch_size'], 
+        warmup_batches      = warmup_batches,
+        ignore_thresh       = config['train']['ignore_thresh'],
+        multi_gpu           = multi_gpu,
+        saved_weights_name  = config['train']['saved_weights_name'],
+        lr                  = config['train']['learning_rate'],
+        grid_scales         = config['train']['grid_scales'],
+        obj_scale           = config['train']['obj_scale'],
+        noobj_scale         = config['train']['noobj_scale'],
+        xywh_scale          = config['train']['xywh_scale'],
+        class_scale         = config['train']['class_scale'],
+    )
 
-    if load_pretrained:
-        model_body.load_weights(weights_path, by_name=True, skip_mismatch=True)
-        print('Load weights {}.'.format(weights_path))
-        if freeze_body in [1, 2]:
-            # Freeze the darknet body or freeze all but 2 output layers.
-            num = (20, len(model_body.layers)-2)[freeze_body-1]
-            for i in range(num): model_body.layers[i].trainable = False
-            print('Freeze the first {} layers of total {} layers.'.format(num, len(model_body.layers)))
+    ###############################
+    #   Kick off the training
+    ###############################
+    callbacks = create_callbacks(config['train']['saved_weights_name'], config['train']['tensorboard_dir'], infer_model)
 
-    model_loss = Lambda(yolo_loss, output_shape=(1,), name='yolo_loss',
-        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.7})(
-        [*model_body.output, *y_true])
-    model = Model([model_body.input, *y_true], model_loss)
+    train_model.fit_generator(
+        generator        = train_generator, 
+        steps_per_epoch  = len(train_generator) * config['train']['train_times'], 
+        epochs           = config['train']['nb_epochs'] + config['train']['warmup_epochs'], 
+        verbose          = 2 if config['train']['debug'] else 1,
+        callbacks        = callbacks, 
+        workers          = 4,
+        max_queue_size   = 8
+    )
 
-    return model
+    # make a GPU version of infer_model for evaluation
+    if multi_gpu > 1:
+        infer_model = load_model(config['train']['saved_weights_name'])
 
-def data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes):
-    '''data generator for fit_generator'''
-    n = len(annotation_lines)
-    i = 0
-    while True:
-        image_data = []
-        box_data = []
-        for b in range(batch_size):
-            if i==0:
-                np.random.shuffle(annotation_lines)
-            image, box = get_random_data(annotation_lines[i], input_shape, random=True)
-            image_data.append(image)
-            box_data.append(box)
-            i = (i+1) % n
-        image_data = np.array(image_data)
-        box_data = np.array(box_data)
-        y_true = preprocess_true_boxes(box_data, input_shape, anchors, num_classes)
-        yield [image_data, *y_true], np.zeros(batch_size)
+    ###############################
+    #   Run the evaluation
+    ###############################   
+    # compute mAP for all the classes
+    average_precisions = evaluate(infer_model, valid_generator)
 
-def data_generator_wrapper(annotation_lines, batch_size, input_shape, anchors, num_classes):
-    n = len(annotation_lines)
-    if n==0 or batch_size<=0: return None
-    return data_generator(annotation_lines, batch_size, input_shape, anchors, num_classes)
+    # print the score
+    for label, average_precision in average_precisions.items():
+        print(labels[label] + ': {:.4f}'.format(average_precision))
+    print('mAP: {:.4f}'.format(sum(average_precisions.values()) / len(average_precisions)))           
 
 if __name__ == '__main__':
-    _main()
+    argparser = argparse.ArgumentParser(description='train and evaluate YOLO_v3 model on any dataset')
+    argparser.add_argument('-c', '--conf', help='path to configuration file')   
+
+    args = argparser.parse_args()
+    _main_(args)

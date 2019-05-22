@@ -1,7 +1,7 @@
 """Miscellaneous utility functions."""
 
 from functools import reduce
-
+import cv2
 from PIL import Image
 import numpy as np
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
@@ -29,6 +29,18 @@ def letterbox_image(image, size):
     new_image = Image.new('RGB', size, (128,128,128))
     new_image.paste(image, ((w-nw)//2, (h-nh)//2))
     return new_image
+# def letterbox_image(image, size):
+#     '''resize image with unchanged aspect ratio using padding'''
+#     iw, ih = image.shape[0] , image.shape[1]
+#     w, h = size
+#     scale = min(w/iw, h/ih)
+#     nw = int(iw*scale)
+#     nh = int(ih*scale)
+
+#     image = cv2.resize(image,(nw,nh))
+#     # new_image = Image.new('RGB', size, (128,128,128))
+#     # new_image.paste(image, ((w-nw)//2, (h-nh)//2))
+#     return image
 
 def rand(a=0, b=1):
     return np.random.rand()*(b-a) + a

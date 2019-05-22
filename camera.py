@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 from pathlib import Path
-
+from datetime import datetime
 
 
 
@@ -28,7 +28,7 @@ class VIDEO :
         "save": False,
         "anotate": False,
         "save_path" :'./images/',
-        "path" : "./video/",
+        "path" : "./videos/VID_20190518_181206.mp4",
         "period" : 0.1
         }
 
@@ -46,22 +46,25 @@ class VIDEO :
     self.anotate : bool 
     self.fps : int
     self.path : str
-    self.video : cv2.VideoCapture
     self.__dict__.update(self._defaults) # set up default values
     self.__dict__.update(kwargs) # and update with user overrides
+    self.video = None 
+    self.fps =  int 
+    self.step =  int
+    # self.extract_frames()
+
+  def extract_frames(self):
     self.video =  cv2.VideoCapture(self.path) 
     self.fps =  self.video.get(cv2.CAP_PROP_FPS)
     self.step =  int(self.period* self.fps)
-
-  def extract_frames(self):
     count = 0
     success = 1
 
     while success: 
       success, image = self.video.read() 
-      if  count  % self.step == 0 :
-
-        count += 1
+      fn = int(datetime.utcnow().timestamp())
+      cv2.imwrite(self.save_path+str(fn)+".jpg",image)
+      count += 1
 
 
 
@@ -75,10 +78,10 @@ class CAMERA :
     self.img_size = None
     self.rvecs = None
     self.tvecs = None
-    self.callibrate()
+    # self.callibrate()
     
   
-  def callibrate(self , folder = 'camera_cal',n_x = 9, n_y = 6, verbose =   False):
+  def callibrate(self , folder = 'camera_cal',n_x = 7, n_y = 7, verbose =   False):
     objp = np.zeros((n_y*n_x, 3), np.float32)
     objp[:, :2] = np.mgrid[0:n_x, 0:n_y].T.reshape(-1, 2)
     image_points = []
@@ -87,6 +90,7 @@ class CAMERA :
     directory =  Path(folder)
     for image_file in directory.glob("*.jpg"):
       img = cv2.imread(str( image_file))
+      img= cv2.resize(img, (400,300))
       img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
       found, corners = cv2.findChessboardCorners(img_gray, (n_x, n_y))
       if found:
@@ -118,3 +122,4 @@ class EVENT :
     self.type : int
     self.speed : float
     self.coordinates : [float, float]
+
