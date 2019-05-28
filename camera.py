@@ -49,22 +49,23 @@ class VIDEO :
     self.__dict__.update(self._defaults) # set up default values
     self.__dict__.update(kwargs) # and update with user overrides
     self.video = None 
-    self.fps =  int 
-    self.step =  int
+    self.fps :  int 
+    self.step :  int
     # self.extract_frames()
 
   def extract_frames(self):
     self.video =  cv2.VideoCapture(self.path) 
     self.fps =  self.video.get(cv2.CAP_PROP_FPS)
-    self.step =  int(self.period* self.fps)
+    # self.step =  int(self.period* self.fps)
     count = 0
     success = 1
 
     while success: 
       success, image = self.video.read() 
-      fn = int(datetime.utcnow().timestamp())
+      fn = int(datetime.utcnow().timestamp()*10000)
       cv2.imwrite(self.save_path+str(fn)+".jpg",image)
       count += 1
+    print(count, self.fps)
 
 
 
@@ -122,4 +123,8 @@ class EVENT :
     self.type : int
     self.speed : float
     self.coordinates : [float, float]
+
+if __name__ == "__main__":
+    video = VIDEO(path = "./videos/solidWhiteRight.mp4", save=True,period = 1)
+    video.extract_frames()
 
