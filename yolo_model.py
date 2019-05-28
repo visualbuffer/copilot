@@ -259,9 +259,10 @@ def make_yolov3_model():
 
 
 
-def decode_netout(netout, anchors, obj_thresh, nms_thresh, net_h, net_w):
+def decode_netout(netout, anchors, obj_thresh, nms_thresh, net_h, net_w,obstructions):
     grid_h, grid_w = netout.shape[:2]
     nb_box = 3
+    # print(netout.shape)
     netout = netout.reshape((grid_h, grid_w, nb_box, -1))
     nb_class = netout.shape[-1] - 5
 
@@ -275,14 +276,20 @@ def decode_netout(netout, anchors, obj_thresh, nms_thresh, net_h, net_w):
     for i in range(grid_h*grid_w):
         row = i // grid_w
         col = i % grid_w
-        
+        # boxes = []# np.zeros((4,))
         for b in range(nb_box):
             # 4th element is objectness score
-            objectness = netout[int(row)][int(col)][b][4]
+            objectness = netout[int(row),int(col),b,4]
+            # objectness = netout[int(row)][int(col)][b][4]
             #objectness = netout[..., :4]
-            
-            if(objectness.all() <= obj_thresh): continue
-            
+            if(objectness <= obj_thresh): 
+                continue
+            classes = netout[int(row),col,b,5:]
+            classes = classes[obstructions]
+            # print("MAX", max(classes))
+            if max(classes) <= obj_thresh : 
+                # print("SKIPPING",classes)
+                continue
             # first 4 elements are x, y, w, and h
             x, y, w, h = netout[int(row)][int(col)][b][:4]
 
@@ -292,25 +299,25 @@ def decode_netout(netout, anchors, obj_thresh, nms_thresh, net_h, net_w):
             h = anchors[2 * b + 1] * np.exp(h) / net_h # unit: image height  
             
             # last elements are class probabilities
-            classes = netout[int(row)][col][b][5:]
-            
+           
             box = BoundBox(x-w/2, y-h/2, x+w/2, y+h/2, objectness, classes)
             #box = BoundBox(x-w/2, y-h/2, x+w/2, y+h/2, None, classes)
-
+            # print("SAVED CLASSES",box.classes)
             boxes.append(box)
 
     return boxes
 
-def correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w):
+def correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w, ar_th=0.0004):
     if (float(net_w)/image_w) < (float(net_h)/image_h):
         new_w = net_w
         new_h = (image_h*net_w)/image_w
     else:
         new_h = net_w
         new_w = (image_w*net_h)/image_h
+    lim_ar = ar_th *image_h*image_w
     x_offset, x_scale = (net_w - new_w)/2./net_w, float(new_w)/net_w
     y_offset, y_scale = (net_h - new_h)/2./net_h, float(new_h)/net_h
-        
+    to_del=[]    
     for i in range(len(boxes)):
         
         
@@ -318,16 +325,21 @@ def correct_yolo_boxes(boxes, image_h, image_w, net_h, net_w):
         boxes[i].xmax = int((boxes[i].xmax - x_offset) / x_scale * image_w)
         boxes[i].ymin = int((boxes[i].ymin - y_offset) / y_scale * image_h)
         boxes[i].ymax = int((boxes[i].ymax - y_offset) / y_scale * image_h)
-        
+        area =  (boxes[i].xmax - boxes[i].xmin) *(boxes[i].ymax- boxes[i].ymin)
+        if area <= lim_ar :
+            to_del.append(i)
+    to_del.sort(reverse=True)
+    for d in to_del:
+        del boxes[d]
+
 def do_nms(boxes, nms_thresh):
     if len(boxes) > 0:
         nb_class = len(boxes[0].classes)
     else:
         return
-        
+    to_del = []    
     for c in range(nb_class):
         sorted_indices = np.argsort([-box.classes[c] for box in boxes])
-
         for i in range(len(sorted_indices)):
             index_i = sorted_indices[i]
 
@@ -338,7 +350,12 @@ def do_nms(boxes, nms_thresh):
 
                 if bbox_iou(boxes[index_i], boxes[index_j]) >= nms_thresh:
                     boxes[index_j].classes[c] = 0
-                    
+                    to_del.append(index_j)
+                    # del boxes[index_j]
+    to_del.sort(reverse=True)
+    for elem in to_del:
+        del boxes[elem]
+
 def draw_boxes(image, boxes, labels, obj_thresh):
     for box in boxes:
         label_str = ''
@@ -416,30 +433,38 @@ class YOLO:
 
         return new_image
 
-    def make_predictions(self, img_path: str, plot =False , save_path=None):
-        image = cv2.imread(img_path)
+    def make_predictions(self,  image = None, img_path= None,plot =False , save_path=None, obstructions =  None, ar_th=0.0004):
+        if img_path:
+            image = cv2.imread(img_path)
+        else:
+            img_path = "./images/detection/detection.jpg"
         image_h, image_w, _ = image.shape
+        image_ar =  image_w*image_h
         new_image = self.preprocess_input(image)
+        obstructions = obstructions if obstructions else [0,1,2]
         yolos = self.yolov3.predict(new_image)
         boxes = []
         save_path = save_path if save_path else "./images/detection/"
 
         for i in range(len(yolos)):
             # decode the output of the network
-            boxes += decode_netout(yolos[i][0], self.anchors[i], self.obj_thresh, self.nms_thresh, self.net_h, self.net_w)
+            boxes += decode_netout(yolos[i][0], self.anchors[i], self.obj_thresh, self.nms_thresh, self.net_h, self.net_w, obstructions)
 
-            
-        correct_yolo_boxes(boxes, image_h, image_w, self.net_h, self.net_w)
+        print(len(boxes))   
+        correct_yolo_boxes(boxes, image_h, image_w, self.net_h, self.net_w,ar_th=ar_th)
         do_nms(boxes, self.nms_thresh)
+        print(len(boxes))
         if plot :
-            draw_boxes(image, boxes, self.labels, self.obj_thresh) 
+            draw_boxes(image, boxes, np.asarray(self.labels)[obstructions], self.obj_thresh) 
             print(save_path + img_path.split("/")[-1])
             cv2.imwrite(save_path + img_path.split("/")[-1], (image).astype('uint8')) 
         return boxes
 
-yolo  = YOLO()
-from datetime import datetime
-t0 = datetime.utcnow()
-yolo.make_predictions(img_path="./images/test4.jpg", plot =True )
-t1 = datetime.utcnow()
-print(t1-t0)
+
+if __name__ == "__main__":
+    yolo  = YOLO()
+    from datetime import datetime
+    t0 = datetime.utcnow()
+    yolo.make_predictions(img_path="./images/old/test1.jpg", plot =True )
+    t1 = datetime.utcnow()
+    print(t1-t0)
