@@ -1,11 +1,20 @@
 from camera import CAMERA
-from yolo import YOLO
+from yolo_model import YOLO ,  BoundBox
 import numpy as np
 import cv2
 from datetime import datetime
 from PIL import Image
 
 # yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
+WHITE = (255, 255, 255)
+YELLOW = (66, 244, 238)
+GREEN = (80, 220, 60)
+LIGHT_CYAN = (255, 255, 224)
+DARK_BLUE = (139, 0, 0)
+GRAY = (128, 128, 128)
+RED = (255,0,0)
+ORANGE =(255,165,0)
+
 vehicles = [1,2,3,5,6,7,8]
 animals =[15,16,17,18,19,21,22,23,]
 humans =[0]
@@ -27,20 +36,44 @@ classes = [#
     'teddy bear','hair drier','toothbrush' ]
 
 
-class OBSTACLE:
-  def __init__(self , bbox, score, category,_id) :
-    self.bbox = bbox
-    self.score =  score
-    self.category =  category
-    self._id = _id
-    # self.image = image
-    self.first_detect =  False
-    self.position = None
-    self.history : np.ndarray = None
-    self.vx = 0
-    self.vy= 0
-    self.gridx : int
-    self.gridy : int
+class OBSTACLE(BoundBox):
+    xmax :int
+    xmin :int
+    ymin :int
+    ymax :int
+    xmid  :int
+    ymid  :int
+    PERIOD = 5
+    __count = 0
+
+    def __init__(self,box: BoundBox, _id,  postion) :
+        self.col_time:float =999.0
+        self._id = _id
+        self.__update_box(box)
+        self.position = postion
+        self.history : np.ndarray = []
+        self.position_hist = []
+        self.velocity = np.zeros((2))
+
+
+    def update_obstacle(self, box: BoundBox, dst, fps) :
+        self.position_hist.append((self.xmin, self.ymin, self.xmax,self.ymax))
+        self.__update_box(box)
+        old_loc = self.position
+        self.history.append(old_loc)
+        self.position = dst
+        if self.__count % self.PERIOD == 0 :
+            self.velocity = (old_loc-dst ) * fps/self.PERIOD
+        self.__count += 1
+        self.col_time = min(dst[1]/(self.velocity[1]+0.001),99)
+        
+    def __update_box(self,box):
+        self.xmax = box.xmax
+        self.xmin =  box.xmin
+        self.ymin  =  box.ymin
+        self.ymax =  box.ymax
+        self.xmid = int((box.xmax+box.xmin)/2)
+        self.ymid = int((box.ymax+box.ymin)/2)
 
 class VEHICLE(OBSTACLE) :
   def __init__(self) :
@@ -86,9 +119,7 @@ class FRAME :
         "speed": 0,
         "n_objects" :0,
          "camera" : CAMERA(),
-        #  "image" :  cv2.imread("./images/old/test1.jpg"),
-        # "image" :  cv2.imread("./images/old/straight_lines1.jpg"),
-        "image":cv2.imread("./images/1558307338.jpg"),
+        "image" : [],
         "UNWARPED_SIZE" : (500, 600),
         "WRAPPED_WIDTH" :  530,
         "LANE_WIDTH" :  3.5,
@@ -115,24 +146,28 @@ class FRAME :
         if  self.image.size ==0 :
             raise ValueError("No Image") 
         # self.image =  self.camera.undistort(self.image)
+        self.temp_dir = './images/detection/'
         self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
         self.M  = None
         self.pix_per_meter_x = 0
         self.pix_per_meter_y = 0
         self.perspective_done_at = 0
-        self.yolo =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
+        self.yolo =  YOLO()
         self.first_detect = True
         self.trackers = []
         self.obstacles :[OBSTACLE] =[]
-        
+        self.img_shp =  self.image.shape
+        self.area =  self.img_shp[0]*self.img_shp[1]
 
-    def perspective_tfm(self ,  image) : 
+    def perspective_tfm(self ,  pos) : 
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > 10000 :
             self.calc_perspective()
-        return cv2.warpPerspective(image, self.M, self.UNWARPED_SIZE)
+        
+        return cv2.perspectiveTransform(pos, self.M)
+        #cv2.warpPerspective(image, self.M, self.UNWARPED_SIZE)
   
-    def calc_perspective(self, verbose =  True):
+    def calc_perspective(self, verbose =  False):
         roi = np.zeros((self.size[0], self.size[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[0, self.size[0]-150],[self.size[1],self.size[0]-150],
                     [self.size[1]//2+100,self.size[0]//2 -200],
@@ -146,9 +181,7 @@ class FRAME :
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
         edges2 = edges*roi
         lines = cv2.HoughLinesP(edges*roi,rho = 4,theta = np.pi/180,threshold = 5,minLineLength = 90,maxLineGap = 30)
-        cv2.imwrite("edges.jpg",edges2)  
-        cv2.imwrite("edges1.jpg",edges)  
-        cv2.imwrite("image.jpg", self.image)
+
        
         # print(lines)
         for line in lines:
@@ -217,79 +250,71 @@ class FRAME :
         return 30
     
     def detect_objects(self, image):
-        out_boxes, out_scores, out_classes= self.yolo.determine_bbox(image) 
-        obst_idx =[ i  for i, c in enumerate(out_classes) if c in obstructions]  
-        out_boxes =  out_boxes[obst_idx,:]
-        out_scores =  out_scores[obst_idx]
-        out_classes = out_classes[obst_idx]
+        boxes= self.yolo.make_predictions(image,obstructions = obstructions,plot=True) 
         image  =  cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         n_obs =  len(self.obstacles)
-        for i in range(out_classes.shape[0]):
-            tracker = cv2.TrackerKCF_create()  # Note: Try comparing KCF with MIL
-            bbox =  out_boxes[i,:]
-            dst =  self.calculate_position(bbox)
-            corwh = self.bbox2corwh(bbox)
-            success = tracker.init(image, tuple(corwh))
+        for i in range(len(boxes)):
+            tracker = cv2.TrackerKCF_create()# cv2.TrackerMIL_create()#  # Note: Try comparing KCF with MIL
+            box = boxes[i]
+            dst =  self.calculate_position(box)
+            bbox = (box.xmin, box.ymin, box.xmax-box.xmin, box.ymax-box.ymin)
+            print(bbox)
+            success = tracker.init(image, bbox )
             if success :
                 self.trackers.append(tracker)
-                obstacle =  OBSTACLE(bbox,out_scores[i],out_classes[i],i+n_obs)
+                obstacle =  OBSTACLE(box, i+n_obs,  dst)
                 self.obstacles.append(obstacle)
         if not self.first_detect :
             self.update_trackers(image)
         return
 
-    def calculate_position(self, bbox):
+    def calculate_position(self, box: BoundBox):
         if (self.perspective_done_at > 0):
-            pos = np.array((bbox[1]/2+bbox[3]/2, bbox[2])).reshape(1, 1, -1)
-            dst = self.perspective_tfm(pos).reshape(-1, 1)
-            # dst = cv2.perspectiveTransform(pos, self.M).reshape(-1, 1)
-            
-            return np.array(dst[0]/self.pix_per_meter_x,(self.UNWARPED_SIZE[1]-dst[1])/self.pix_per_meter_y)
+            pos = np.array((box.xmax/2+box.xmin/2, box.ymax)).reshape(1, 1, -1)
+            dst = self.perspective_tfm(pos).reshape(2)
+            dst =  np.array([dst[0]/self.pix_per_meter_x,(self.UNWARPED_SIZE[1]-dst[1])/self.pix_per_meter_y])
+            return dst
         else:
             return np.array([0,0])
     
-    @staticmethod
-    def bbox2corwh(bbox):
-        ymax = int(bbox[0])
-        xmin = int(bbox[1])
-        ymin = int(bbox[2]) 
-        xmax = int(bbox[3] )
-        return (xmin, ymin,xmax-xmin,ymin-ymax)
 
     @staticmethod
-    def corwh2bbox(corwh):  
-        xmin = int(corwh[0])
-        ymin = int(corwh[1])
-        xmax = int(corwh[0] + corwh[2])
-        ymax = int(corwh[1] + corwh[3])
-        return np.array([xmin, ymin,xmax,ymax])
+    def corwh2box(corwh):
+        box=BoundBox( int(corwh[0]), int(corwh[1]), int(corwh[0] + corwh[2]), int(corwh[1] + corwh[3]))
+        return box
 
     
-    def update_trackers(self, image):
-        boxes = []
-        not_present = []
+    def update_trackers(self, image,plot = False):
+        for n, tracker in enumerate(self.trackers):
 
-        for n, pair in enumerate(self.trackers):
-            tracker, car = pair
             success, corwh = tracker.update(image)
-
-            if not success:
-                not_present.append(n)
+            print("tracking", corwh ,  self.obstacles[n].xmin,self.obstacles[n].ymin,self.obstacles[n].xmax,self.obstacles[n].ymax)
+            if not success :
                 del self.obstacles[n]
                 del self.trackers[n]
                 continue
-            bbox =  self.corwh2bbox(corwh)
-            self.obstacles[n]= self.update_obstacle(self.obstacles[n], bbox)
+            box = self.corwh2box(corwh)
+            dst = self.calculate_position( box)  
+            self.obstacles[n].update_obstacle(box, dst, self.fps)
+        if plot: 
+            for i , box in enumerate(self.obstacles):
+                past=box.position_hist[0]
+                pos_lbl =  str(int(box.velocity[0]))+"," + str(int(box.velocity[1]))
+                center =  (int(past[0]/2+past[2]/2), past[3])
+                color = ORANGE if box.velocity[1] > 0  else GREEN
+                cv2.rectangle(image, (box.xmin,box.ymin), (box.xmax,box.ymax), color, 1)
+                cv2.circle(image,center,2, DARK_BLUE,2)
+                cv2.circle(image,(int(box.xmin/2+box.xmax/2),box.ymax),2, color,2)
+                cv2.putText(image, pos_lbl, 
+                            (box.xmin+5, box.ymid),  cv2.FONT_HERSHEY_SIMPLEX, 
+                            5e-4 * image.shape[0],   YELLOW, 1)
+                cv2.putText(image, str(int(box.col_time))+"|" + str(int(box.position[1])), 
+                            (box.xmid, box.ymin),  cv2.FONT_HERSHEY_SIMPLEX, 
+                            5e-4 * image.shape[0], LIGHT_CYAN  , 1)
+            cv2.imwrite(self.temp_dir+"updated.jpg", image)   
+        return 
 
-
-        return boxes
-
-    def update_obstacle(self, obstacle: OBSTACLE ,  bbox) :
-        obstacle.bbox = bbox
-        obstacle.history.append(obstacle.position)
-        obstacle.position = self.calculate_position(bbox)
-        obstacle.velocity = (obstacle.position - obstacle.history[0,:]) * self.fps
-        return obstacle
+    
 
 
     def remove_tracked(self) :
@@ -306,28 +331,17 @@ class FRAME :
     def vehicle_speed(self) :
         return
 def main():
-    frame  = FRAME()
+    import os
+    files =  os.listdir("./images/")
+    files  = [f for f in files if f[-3:]=="jpg"]
+    files.sort(reverse=True)
 
+    frame  = FRAME( image=cv2.imread("./images/"+files[0]))
     frame.calc_perspective()
-
-    # frame.detect_objects(Image.fromarray(cv2.imread("./images/1558173074.jpg")))
-
+    frame.detect_objects(cv2.imread("./images/"+files[0]))
+    for i, f in enumerate(files[1:72]):
+        frame.update_trackers(cv2.imread("./images/"+f),plot=True)
+        # cv2.waitKey(1)
+        input("Press Enter to continue...")
+    
 main()
-# PROFILE_LIMIT = 0.5
-# PROFILE_DAT = "./profile.dat"
-# PROFILE_TXT = "./profile.txt"
-# import os, cProfile, pstats
-# cProfile.runctx('main()', globals(), locals(), PROFILE_DAT)
-# f = open(PROFILE_TXT, 'wb')
-# for sort_key in 'time', 'cumulative':
-#     stats = pstats.Stats(PROFILE_DAT, stream=f)
-#     stats.sort_stats(sort_key)
-#     stats.print_stats(PROFILE_LIMIT)
-#     stats.strip_dirs()
-#     stats.sort_stats(sort_key)
-#     # if sort_key == 'time':
-#     #     stats.print_callers(PROFILE_LIMIT)
-#     # else:
-#     #     stats.print_callees(PROFILE_LIMIT)
-# f.close()
-# os.unlink(PROFILE_DAT)
