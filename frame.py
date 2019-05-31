@@ -140,7 +140,8 @@ class FRAME :
         self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
         self.UNWARPED_SIZE  = (int(self.size[1]*0.5),int(self.size[0]*2))
         self.WRAPPED_WIDTH =  int(self.UNWARPED_SIZE[0]*1.25)
-        self.M  = None
+        self.trans_mat  = None
+        self.inv_trans_mat  = None
         self.pixels_per_meter = [0,0]
         self.perspective_done_at = 0
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
@@ -162,7 +163,7 @@ class FRAME :
         self.roi_mask = np.ones((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
         self.total_mask = np.zeros_like(self.roi_mask)
         self.warped_mask = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0]), dtype=np.uint8)
-        # self.M = transform_matrix
+        # self.trans_mat = transform_matrix
         self.lane_count = 0
 
 
@@ -175,8 +176,8 @@ class FRAME :
         if now - self.perspective_done_at > self.PERSP_PERIOD :
             self.calc_perspective()
         
-        return cv2.perspectiveTransform(pos, self.M)
-        #cv2.warpPerspective(image, self.M, self.UNWARPED_SIZE)
+        return cv2.perspectiveTransform(pos, self.trans_mat)
+        #cv2.warpPerspective(image, self.trans_mat, self.UNWARPED_SIZE)
   
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.size[0], self.size[1]), dtype=np.uint8) # 720 , 1280
@@ -226,9 +227,10 @@ class FRAME :
                             [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
                             [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
 
-        self.M = cv2.getPerspectiveTransform(src_points, dst_points)
+        self.trans_mat = cv2.getPerspectiveTransform(src_points, dst_points)
+        self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
         min_wid = 1000
-        img = cv2.warpPerspective(self.image, self.M, self.UNWARPED_SIZE)
+        img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
         grey = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
         mask = grey[:,:,1]>128
         mask[:, :50]=0
@@ -242,9 +244,9 @@ class FRAME :
             min_wid = x2-x1
         self.pixels_per_meter[0] = min_wid/self.LANE_WIDTH
         if False :#self.camera.callibration_done :
-            Lh = np.linalg.inv(np.matmul(self.M, self.camera.cam_matrix))
+            Lh = np.linalg.inv(np.matmul(self.trans_mat, self.camera.cam_matrix))
         else:
-            Lh = np.linalg.inv(self.M)
+            Lh = np.linalg.inv(self.trans_mat)
         self.pixels_per_meter[1] = self.pixels_per_meter[0] * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
         self.perspective_done_at =  datetime.utcnow().timestamp()
         if verbose :       
@@ -282,8 +284,25 @@ class FRAME :
     #         if not self.first_detect :
     #             self.update_trackers(image)
     #     else:
+   
     #         self.update_trackers(image,plot)
     #     return
+    def determine_lane(self, box:OBSTACLE):
+        points =np.array( [box.xmid, box.ymid], dtype='float32').reshape(1,1,2)
+        new_points = cv2.perspectiveTransform(points,self.inv_trans_mat)
+        new_points =  new_points.reshape(2)
+        left  = np.polyval(self.left_line.poly_coeffs,new_points[0]) - new_points[1]
+        right = np.polyval(self.right_line.poly_coeffs,new_points[0]) - new_points[1]
+
+        left2  = np.polyval(self.left_line.poly_coeffs,new_points[1]) - new_points[0]
+        right2 = np.polyval(self.right_line.poly_coeffs,new_points[1]) - new_points[0]
+        status = "my"
+        if left < 0 and right <0:
+            status = "left"
+        elif right>0 and left >0 :
+            status = "right"
+        print(box._id,status, left, right, "|", left2, right2)
+        return status
 
     def calculate_position(self, box: BoundBox):
         if (self.perspective_done_at > 0):
@@ -292,6 +311,7 @@ class FRAME :
             dst =  np.array([dst[0]/self.pixels_per_meter[0],(self.UNWARPED_SIZE[1]-dst[1])/self.pixels_per_meter[1]])
             return dst
         else:
+            
             return np.array([0,0])
     
 
@@ -330,6 +350,7 @@ class FRAME :
     
     def update_trackers(self, img,plot = False):
         image = img.copy()
+        self.find_lane( img, distorted=False, reset=False)
         for n, obs in enumerate(self.obstacles):
 
             success, corwh = obs.tracker.update(image)
@@ -356,8 +377,12 @@ class FRAME :
                 if success :
                     self.obstacles[i].tracker=tracker
 
-        self.find_lane( img, distorted=False, reset=False)
+        
         self.count +=1
+        for i in range(len(self.obstacles)):
+            lane = self.determine_lane(self.obstacles[i])
+            self.obstacles[i].lane =  lane
+
         if plot and self.count>1: 
            self.draw_lane_weighted(img)
         return
@@ -366,13 +391,13 @@ class FRAME :
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
             self.calc_perspective()
-        return cv2.warpPerspective(img, self.M, self.UNWARPED_SIZE, flags=cv2.WARP_FILL_OUTLIERS+cv2.INTER_CUBIC)
+        return cv2.warpPerspective(img, self.trans_mat, self.UNWARPED_SIZE, flags=cv2.WARP_FILL_OUTLIERS+cv2.INTER_CUBIC)
 
     def unwarp(self, img):
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
             self.calc_perspective()
-        return cv2.warpPerspective(img, self.M, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
+        return cv2.warpPerspective(img, self.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
     def equalize_lines(self, alpha=0.9):
         mean = 0.5 * (self.left_line.coeff_history[:, 0] + self.right_line.coeff_history[:, 0])
@@ -462,8 +487,9 @@ class FRAME :
     def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.6, gamma=0):
         for i , box in enumerate(self.obstacles):
             past=[box.xmin,box.ymin,box.xmax,box.ymax]
-            pos_lbl = str(box._id)+"|"+ str(int(box.velocity[0]))+"," + str(int(box.velocity[1]))
+            pos_lbl =  str(int(box.velocity[0]))+"," + str(int(box.velocity[1]))
             center =  (int(past[0]/2+past[2]/2), past[3])
+            centr_lbl = str(box._id)+"|"+box.lane
             color = ORANGE if box.velocity[1] > 0  else GREEN
             cv2.rectangle(image, (box.xmin,box.ymin), (box.xmax,box.ymax), color, 1)
             cv2.circle(image,center,2, DARK_BLUE,2)
@@ -471,7 +497,7 @@ class FRAME :
             cv2.putText(image, pos_lbl, 
                         (box.xmin+5, box.ymid),  cv2.FONT_HERSHEY_SIMPLEX, 
                         5e-4 * image.shape[0],   YELLOW, 1)
-            cv2.putText(image, str(int(box.col_time))+"|" + str(int(box.position[1])), 
+            cv2.putText(image, centr_lbl, 
                         (box.xmid, box.ymin),  cv2.FONT_HERSHEY_SIMPLEX, 
                         5e-4 * image.shape[0], LIGHT_CYAN  , 1)
 
