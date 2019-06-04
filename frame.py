@@ -22,7 +22,7 @@ animals =[15,16,17,18,19,21,22,23,]
 humans =[0]
 obstructions =  humans + animals + vehicles
 classes = [#
-    'person','bicycle','car','motorbike','aeroplane','bus',\
+    'Ped','bicycle','car','motorbike','aeroplane','bus',\
     'train','truck','boat','traffic light','fire hydrant','stop sign',\
     'parking meter','bench','bird','cat','dog','horse',\
     'sheep','cow','elephant', 'bear','zebra','giraffe',\
@@ -54,24 +54,26 @@ class OBSTACLE(BoundBox):
     def __init__(self,box: BoundBox,dst, _id) :
         self.col_time:float =999.0
         self._id = _id
-        self.update_box(box)
+        self.update_coord(box)
+        self.update_score(box)
         self.history : np.ndarray = []
         self.position_hist = []
         self.velocity = np.zeros((2))
         self.position = dst
+        self.score=box.score
+        self.label = box.label
 
     def update_obstacle(self, box: BoundBox, dst,  fps) :
         self.position_hist.append((self.xmin, self.ymin, self.xmax,self.ymax))
-        self.update_box(box)
+        self.update_coord(box)
         old_loc = self.position
         self.history.append(old_loc)
         self.col_time = min(dst[1]/(self.velocity[1]+0.001),99)
         if self.__count % self.PERIOD == 0 :
             self.velocity = (old_loc-dst ) * fps/self.PERIOD     
         self.__count += 1
-        
-        
-    def update_box(self,box):
+
+    def update_coord(self,box):
         self.xmax = box.xmax
         self.xmin =  box.xmin
         self.ymin  =  box.ymin
@@ -79,6 +81,14 @@ class OBSTACLE(BoundBox):
         self.xmid = int((box.xmax+box.xmin)/2)
         self.ymid = int((box.ymax+box.ymin)/2)
 
+    def update_score(self,box):     
+        self.score=box.score
+        self.label = box.label 
+
+    def update_box(self,box):
+        self.update_coord(box)
+        self.update_score(box)
+        
         
         
   
@@ -138,7 +148,7 @@ class FRAME :
             raise ValueError("No Image") 
         self.temp_dir = './images/detection/'
         self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
-        self.UNWARPED_SIZE  = (int(self.size[1]*0.5),int(self.size[0]*2))
+        self.UNWARPED_SIZE  = (int(self.size[0]),int(self.size[1]*.4))
         self.WRAPPED_WIDTH =  int(self.UNWARPED_SIZE[0]*1.25)
         self.trans_mat  = None
         self.inv_trans_mat  = None
@@ -155,15 +165,10 @@ class FRAME :
         ### LANE FINDER 
         self.lane_found = False
         self.count = 0
-        # self.cam_matrix = cam_matrix
-        # self.dist_coeffs = dist_coeffs
-        # self.img_size = img_size
-        # self.UNWARPED_SIZE = UNWARPED_SIZE
         self.mask = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
         self.roi_mask = np.ones((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
         self.total_mask = np.zeros_like(self.roi_mask)
         self.warped_mask = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0]), dtype=np.uint8)
-        # self.trans_mat = transform_matrix
         self.lane_count = 0
 
 
@@ -201,7 +206,6 @@ class FRAME :
         for line in lines:
             
             for x1, y1, x2, y2 in line:
-                cv2.line(edges2, (x1,y1),(x2,y2), (255, 0, 0), 1)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
                 normal /=np.linalg.norm(normal)
                 point = np.array([[x1],[y1]], dtype=np.float32)
@@ -235,6 +239,9 @@ class FRAME :
         mask = grey[:,:,1]>128
         mask[:, :50]=0
         mask[:, -50:]=0
+        cv2.imshow("grey", grey)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
         mom = cv2.moments(mask[:,:self.UNWARPED_SIZE[0]//2].astype(np.uint8))
         x1 = mom["m10"]/mom["m00"]
         mom = cv2.moments(mask[:,self.UNWARPED_SIZE[0]//2:].astype(np.uint8))
@@ -264,29 +271,7 @@ class FRAME :
     def get_speed(self):
         return 30
     
-    # def detect_objects(self, image, plot = False):
-    #     if self.count% self.__yp == 0 :
-    #         boxes= self.yolo.make_predictions(image,obstructions = obstructions,plot=True) 
-    #         boxes =  self.map_frame2frame
-    #         image  =  cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    #         n_obs =  len(self.obstacles)
-    #         for i in range(len(boxes)):
-    #             tracker = cv2.TrackerKCF_create()# cv2.TrackerMIL_create()#  # Note: Try comparing KCF with MIL
-    #             box = boxes[i]
-    #             dst =  self.calculate_position(box)
-    #             bbox = (box.xmin, box.ymin, box.xmax-box.xmin, box.ymax-box.ymin)
-    #             # print(bbox)
-    #             success = tracker.init(image, bbox )
-    #             if success :
-    #                 self.trackers.append(tracker)
-    #                 obstacle =  OBSTACLE(box, i+n_obs,  dst)
-    #                 self.obstacles.append(obstacle)
-    #         if not self.first_detect :
-    #             self.update_trackers(image)
-    #     else:
-   
-    #         self.update_trackers(image,plot)
-    #     return
+
     def determine_lane(self, box:OBSTACLE):
         points =np.array( [box.xmid, box.ymid], dtype='float32').reshape(1,1,2)
         new_points = cv2.perspectiveTransform(points,self.inv_trans_mat)
@@ -483,49 +468,87 @@ class FRAME :
         if self.lane_found:
             self.equalize_lines(0.875)
 
+    @staticmethod
+    def put_text(overlay,text, coord, color=WHITE):
+        ft_sz = 5e-4 * overlay.shape[0]
+        sz = ft_sz*25
+        font =  cv2.FONT_HERSHEY_SIMPLEX
+        rect_ht = int(sz *1.2)
+        rect_wd = int(len(text)*sz*0.8)
+        p1 = (coord[0], coord[1])
+        p2 = (coord[0]+rect_wd, coord[1]-rect_ht)
+        cv2.rectangle(overlay, p1, p2,  (0, 0, 0),-1)
+        # cv2.putText(overlay, text,   coord,  font, ft_sz, (0, 0, 0), 5)
+        cv2.putText(overlay, text,   coord,  font, ft_sz, color, 1)
 
-    def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.6, gamma=0):
+        return 
+
+    def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.8, gamma=0):
+        overlay = image.copy()
+        font =  cv2.FONT_HERSHEY_COMPLEX_SMALL
         for i , box in enumerate(self.obstacles):
             past=[box.xmin,box.ymin,box.xmax,box.ymax]
-            pos_lbl =  str(int(box.velocity[0]))+"," + str(int(box.velocity[1]))
-            center =  (int(past[0]/2+past[2]/2), past[3])
-            centr_lbl = str(box._id)+"|"+box.lane
+
+            t1 = classes[obstructions[box.label]] +" ["+str(int(box.position[1])) + "m]" 
+            t2 = "("+str(int(box.score*100))+"%) ID: " +str(box._id)
+            b1= "Lane "+ box.lane
+            b2 = str(int(box.velocity[1]))+"m/s"
+            b3 = "Col "+str(int(box.col_time))+"s"
+            pt1 = (box.xmin, box.ymin-10)
+            pt2 =  (box.xmin, box.ymin)
+            pb1 = (box.xmin, box.ymax+10)
+            pb2 = (box.xmin, box.ymax+20)
+            pb3 =  (box.xmin, box.ymax+30)
+            self.put_text(overlay, t1,   pt1)
+            self.put_text(overlay, t2,   pt2)
+            self.put_text(overlay, b1,   pb1)
+            self.put_text(overlay, b2,   pb2)
+            self.put_text(overlay, b3,   pb3)
+
+            # centr_lbl = classes[obstructions[box.label]] +"|"+ str(int(box.score*100))+"%" 
+            # top_lbl = str(box._id)+"|"+box.lane
+            # bot_lbl = str(int(box.col_time)) +"s | " + str(int(box.position[0])) + " m | " +str(int(box.velocity[0])) + " m/s"
+            past_center =  (int(past[0]/2+past[2]/2), past[3])
+            # font_thk =1
+            
             color = ORANGE if box.velocity[1] > 0  else GREEN
-            cv2.rectangle(image, (box.xmin,box.ymin), (box.xmax,box.ymax), color, 1)
-            cv2.circle(image,center,2, DARK_BLUE,2)
-            cv2.circle(image,(int(box.xmin/2+box.xmax/2),box.ymax),2, color,2)
-            cv2.putText(image, pos_lbl, 
-                        (box.xmin+5, box.ymid),  cv2.FONT_HERSHEY_SIMPLEX, 
-                        5e-4 * image.shape[0],   YELLOW, 1)
-            cv2.putText(image, centr_lbl, 
-                        (box.xmid, box.ymin),  cv2.FONT_HERSHEY_SIMPLEX, 
-                        5e-4 * image.shape[0], LIGHT_CYAN  , 1)
-
-
+            cv2.rectangle(overlay, (box.xmin,box.ymin), (box.xmax,box.ymax), color,2)
+            cv2.circle(overlay,past_center,1, GRAY,2)
+            # self.put_text(overlay, top_lbl,   (box.xmin+5, box.ymin))
+            # self.put_text(overlay, centr_lbl,   (box.xmin, box.ymid))
+            # self.put_text(overlay, bot_lbl,   (box.xmin, box.ymax),)
+            # cv2.putText(overlay, top_lbl, 
+            #             (box.xmin+5, box.ymin),  font, 
+            #             6e-4 * image.shape[0],   YELLOW, font_thk)
+            # cv2.putText(overlay, centr_lbl, 
+            #             (box.xmin, box.ymid),  font, 
+            #             6e-4 * image.shape[0], LIGHT_CYAN  , font_thk)
+            # cv2.putText(overlay, bot_lbl, 
+            #             (box.xmin, box.ymax),  font, 
+            #             6e-4 * image.shape[0], LIGHT_CYAN  , font_thk)
+        image =  cv2.addWeighted(image, alpha, overlay, beta, gamma)
         left_line = self.left_line.get_line_points()
         right_line = self.right_line.get_line_points()
         both_lines = np.concatenate((left_line, np.flipud(right_line)), axis=0)
         lanes = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
         center_line =  (left_line +  right_line)//2
         if self.lane_found:
-            # input("Press Enter to continue...")
-            # cv2.fillPoly(lanes, [both_lines.astype(np.int32)], (0, 255, 0))
             cv2.fillPoly(lanes, [both_lines.astype(np.int32)], LIGHT_CYAN)
             cv2.polylines(lanes, [left_line.astype(np.int32)], False,RED ,thickness=5 )
             cv2.polylines(lanes, [right_line.astype(np.int32)],False,  DARK_BLUE, thickness=5)
             cv2.polylines(lanes, [center_line.astype(np.int32)],False,  ORANGE, thickness=5)
-            mid_coef = 0.5 * (self.left_line.poly_coeffs + self.right_line.poly_coeffs)
-            curve = get_curvature(mid_coef, img_size=self.UNWARPED_SIZE, pixels_per_meter=self.left_line.pixels_per_meter)
-            shift = get_center_shift(mid_coef, img_size=self.UNWARPED_SIZE,
-                                     pixels_per_meter=self.left_line.pixels_per_meter)
-            cv2.putText(image, "Road curvature: {:6.2f}m".format(curve), (420, 50), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
-                        thickness=5, color=(255, 255, 255))
-            cv2.putText(image, "Road curvature: {:6.2f}m".format(curve), (420, 50), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
-                        thickness=3, color=(0, 0, 0))
-            cv2.putText(image, "Car position: {:4.2f}m".format(shift), (460, 100), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
-                        thickness=5, color=(255, 255, 255))
-            cv2.putText(image, "Car position: {:4.2f}m".format(shift), (460, 100), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
-                        thickness=3, color=(0, 0, 0))
+            # mid_coef = 0.5 * (self.left_line.poly_coeffs + self.right_line.poly_coeffs)
+            # curve = get_curvature(mid_coef, img_size=self.UNWARPED_SIZE, pixels_per_meter=self.left_line.pixels_per_meter)
+            # shift = get_center_shift(mid_coef, img_size=self.UNWARPED_SIZE,
+            #                          pixels_per_meter=self.left_line.pixels_per_meter)
+            # cv2.putText(image, "Road curvature: {:6.2f}m".format(curve), (420, 50), font, fontScale=2.5,
+            #             thickness=5, color=(255, 255, 255))
+            # cv2.putText(image, "Road curvature: {:6.2f}m".format(curve), (420, 50), font, fontScale=2.5,
+            #             thickness=3, color=(0, 0, 0))
+            # cv2.putText(image, "Car position: {:4.2f}m".format(shift), (460, 100), font, fontScale=2.5,
+            #             thickness=5, color=(255, 255, 255))
+            # cv2.putText(image, "Car position: {:4.2f}m".format(shift), (460, 100), font, fontScale=2.5,
+            #             thickness=3, color=(0, 0, 0))
             lanes_unwarped = self.unwarp(lanes)
             overlay = cv2.addWeighted(image, alpha, lanes_unwarped, beta, gamma)
             cv2.imwrite(self.temp_dir+"detection.jpg", overlay)
@@ -535,9 +558,9 @@ class FRAME :
             # patch = image[corner[0]:corner[0]+warning_shape[0], corner[1]:corner[1]+warning_shape[1]]
             # # patch[self.warning_icon[:, :, 3] > 0] = self.warning_icon[self.warning_icon[:, :, 3] > 0, 0:3]
             # image[corner[0]:corner[0]+warning_shape[0], corner[1]:corner[1]+warning_shape[1]]=patch
-            cv2.putText(image, "Lane lost!", (550, 170), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
+            cv2.putText(image, "Lane lost!", (550, 170), font, fontScale=2.5,
                         thickness=5, color=(255, 255, 255))
-            cv2.putText(image, "Lane lost!", (550, 170), cv2.FONT_HERSHEY_PLAIN, fontScale=2.5,
+            cv2.putText(image, "Lane lost!", (550, 170), font, fontScale=2.5,
                         thickness=3, color=(0, 0, 0))
             cv2.imwrite(self.temp_dir+"detection.jpg", image)
         
@@ -552,7 +575,7 @@ def main():
     import os
     files =  os.listdir("./images/")
     files  = [f for f in files if f[-3:]=="jpg"]
-    files.sort(reverse=True)
+    files.sort()
 
     frame  = FRAME( image=cv2.imread("./images/"+files[0]))
     frame.calc_perspective()
