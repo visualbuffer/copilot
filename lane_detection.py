@@ -13,7 +13,7 @@ def compute_hls_white_yellow_binary(rgb_img):
     
     # Compute a binary thresholded image where yellow is isolated from HLS components
     img_hls_yellow_bin = np.zeros_like(hls_img[:,:,0])
-    img_hls_yellow_bin[((hls_img[:,:,0] >= 15) & (hls_img[:,:,0] <= 35))
+    img_hls_yellow_bin[((hls_img[:,:,0] >= 20) & (hls_img[:,:,0] <= 45))
                  & ((hls_img[:,:,1] >= 30) & (hls_img[:,:,1] <= 204))
                  & ((hls_img[:,:,2] >= 115) & (hls_img[:,:,2] <= 255))                
                 ] = 1
@@ -21,8 +21,8 @@ def compute_hls_white_yellow_binary(rgb_img):
     # Compute a binary thresholded image where white is isolated from HLS components
     img_hls_white_bin = np.zeros_like(hls_img[:,:,0])
     img_hls_white_bin[((hls_img[:,:,0] >= 0) & (hls_img[:,:,0] <= 255))
-                 & ((hls_img[:,:,1] >= 200) & (hls_img[:,:,1] <= 255))
-                 & ((hls_img[:,:,2] >= 0) & (hls_img[:,:,2] <= 255))                
+                 & ((hls_img[:,:,1] >= 120) & (hls_img[:,:,1] <= 200))
+                 & ((hls_img[:,:,2] >= 80) & (hls_img[:,:,2] <= 255))                
                 ] = 1
     
     # Now combine both
@@ -219,7 +219,7 @@ class AdvancedLaneDetectorWithMemory:
         # Create the undistorted and binary perspective transforms
         img_size = (undist_img.shape[1], undist_img.shape[0])
         undist_img_psp = cv2.warpPerspective(undist_img, self.M_psp, img_size, flags=cv2.INTER_LINEAR)
-        thres_img_psp = cv2.warpPerspective(thres_img, self.M_psp, img_size, flags=cv2.INTER_LINEAR)
+        thres_img_psp = cv2.warpPerspective(thres_img,  img_size, flags=cv2.INTER_LINEAR)
         
         ll, rl = self.compute_lane_lines(thres_img_psp)
         lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
@@ -597,13 +597,14 @@ class AdvancedLaneDetectorWithMemory:
         return (left_line, right_line)
 
 if __name__ == "__main__":
-    img =  cv2.imread("./images/15590240647717.jpg")
+    img =  cv2.imread("./images/straight_lines1.jpg")
     (bottom_px, right_px) = (img.shape[0] - 1, img.shape[1] - 1) 
     pts = np.array([[210,bottom_px],[595,450],[690,450], [1110, bottom_px]], np.int32)
     src_pts = pts.astype(np.float32)
     dst_pts = np.array([[200, bottom_px], [200, 0], [1000, 0], [1000, bottom_px]], np.float32)
-    ld = AdvancedLaneDetectorWithMemory( src_pts, dst_pts, 20, 100, 50)
-    image =  cv2.imread("./images/15590240679589.jpg")
+    dimn = (img.shape[0] , img.shape[1])
+    ld = AdvancedLaneDetectorWithMemory( src_pts, dst_pts, 5, 100, 5, img_dimensions = dimn,)
+    image =  cv2.imread("./images/test6.jpg")
     proc_img = ld.process_image(image)
     cv2.imwrite("frame.jpg",proc_img)
 
