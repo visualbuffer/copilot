@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 import math
-
+from datetime import datetime
+from matplotlib import pyplot as plt
 from collections import deque
 
 def compute_hls_white_yellow_binary(rgb_img):
@@ -167,42 +168,126 @@ class AdvancedLaneDetectorWithMemory:
     """
     The AdvancedLaneDetectorWithMemory is a class that can detect lines on the road
     """
-    def __init__(self,  psp_src, psp_dst, sliding_windows_per_line, 
-                 sliding_window_half_width, sliding_window_recenter_thres, 
-                 small_img_size=(256, 144), small_img_x_offset=20, small_img_y_offset=10,
-                 img_dimensions=(540, 960), lane_width_px=800, 
-                 lane_center_px_psp=600, real_world_lane_size_meters=(32, 3.7)):
+    UNWARPED_SIZE :(int,int)
+    WRAPPED_WIDTH  :  int
+    small_img_size=(256, 144)
+    small_img_x_offset=20
+    small_img_y_offset=10
+    img_dimensions=(540, 960)
+    lane_width_px=800
+    temp_dir = "./images/detection/"
+    sliding_windows_per_line = 10 
+    sliding_window_half_width=100
+    sliding_window_recenter_thres=25
+    lane_center_px_psp=600
+    real_world_lane_size_meters=(32, 3.7)
+    def __init__(self,  img ):
         self.objpts = None
         self.imgpts = None
-        self.M_psp = cv2.getPerspectiveTransform(psp_src, psp_dst)
-        self.M_inv_psp = cv2.getPerspectiveTransform(psp_dst, psp_src)
-
-
-        self.sliding_windows_per_line = sliding_windows_per_line
-        self.sliding_window_half_width = sliding_window_half_width
-        self.sliding_window_recenter_thres = sliding_window_recenter_thres
         
-        self.small_img_size = small_img_size
-        self.small_img_x_offset = small_img_x_offset
-        self.small_img_y_offset = small_img_y_offset
+        # IMAGE PROPERTIES
+        self.image =  img
+        self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
+        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1.1))
+        self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.25)
+        self.calc_perspective()
         
-        self.img_dimensions = img_dimensions
-        self.lane_width_px = lane_width_px
-        self.lane_center_px_psp = lane_center_px_psp 
-        self.real_world_lane_size_meters = real_world_lane_size_meters
+        
 
+        # LANE PROPERTIES
         # We can pre-compute some data here
         self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
         self.xm_per_px = self.real_world_lane_size_meters[1] / self.lane_width_px
-        self.ploty = np.linspace(0, self.img_dimensions[0] - 1, self.img_dimensions[0])
-        
+        self.ploty = np.linspace(0, self.UNWARPED_SIZE[0] - 1, self.UNWARPED_SIZE[0])
         self.previous_left_lane_line = None
         self.previous_right_lane_line = None
-        
         self.previous_left_lane_lines = LaneLineHistory()
         self.previous_right_lane_lines = LaneLineHistory()
-        
         self.total_img_count = 0
+
+    def calc_perspective(self, verbose =  True):
+        roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
+        roi_points = np.array([[0, self.img_dimensions[0]],[self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1]//2+100,-0*self.img_dimensions[0]],
+                     [self.img_dimensions[1]//2-100,-0*self.img_dimensions[0]]], dtype=np.int32)
+        cv2.fillPoly(roi, [roi_points], 1)
+        
+        Lhs = np.zeros((2,2), dtype= np.float32)
+        Rhs = np.zeros((2,1), dtype= np.float32)
+        grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        mn_hsl = np.median(grey) #grey.median()
+        edges = cv2.Canny(grey, int(mn_hsl*4), int(mn_hsl*3))
+        # edges = cv2.Canny(grey[:, :, 1], 500, 400)
+        edges2 = edges*roi
+        cv2.imwrite(self.temp_dir+"mask.jpg", edges2)
+        lines = cv2.HoughLinesP(edges*roi,rho = 4,theta = np.pi/180,threshold = 4,minLineLength = 80,maxLineGap = 50)
+
+       
+        # print(lines)
+        for line in lines:
+            
+            for x1, y1, x2, y2 in line:
+                normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
+                normal /=np.linalg.norm(normal)
+                point = np.array([[x1],[y1]], dtype=np.float32)
+                outer = np.matmul(normal, normal.T)
+                Lhs += outer
+                Rhs += np.matmul(outer, point)
+        vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
+        self.lane_center_px_psp=vanishing_point[0]
+        top = vanishing_point[1] + 50
+        bottom = self.img_dimensions[0]+2000
+        
+        def on_line(p1, p2, ycoord):
+            return [p1[0]+ (p2[0]-p1[0])/float(p2[1]-p1[1])*(ycoord-p1[1]), ycoord]
+
+
+        #define source and destination targets
+        p1 = [vanishing_point[0] - self.WRAPPED_WIDTH/2, top]
+        p2 = [vanishing_point[0] + self.WRAPPED_WIDTH/2, top]
+        p3 = on_line(p2, vanishing_point, bottom)
+        p4 = on_line(p1, vanishing_point, bottom)
+        src_points = np.array([p1,p2,p3,p4], dtype=np.float32)
+        # print(src_points,vanishing_point)
+        dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
+                            [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
+                            [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
+        print(src_points,dst_points)
+        self.trans_mat = cv2.getPerspectiveTransform(src_points, dst_points)
+        self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
+        min_wid = 1000
+        img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
+        grey = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+        mask = grey[:,:,1]>128
+        mask[:, :50]=0
+        mask[:, -50:]=0
+        histogram = np.sum(mask[mask.shape[0]//2:,:], axis=0)
+        # delta1 =  histogram[:-1]-histogram[1:]
+        # delta2 =  delta1[:-1]-delta1[1:]
+        
+        x1 = np.argmax(histogram[:histogram.shape[0]//2])
+        x2 = histogram.shape[0]//2  +np.argmax(histogram[histogram.shape[0]//2 :])
+
+        if (x2-x1<min_wid):
+            min_wid = x2-x1
+        self.ym_per_px = min_wid/self.real_world_lane_size_meters[1]
+        if False :#self.camera.callibration_done :
+            Lh = 1#np.linalg.inv(np.matmul(self.trans_mat, self.camera.cam_matrix))
+        else:
+            Lh = np.linalg.inv(self.trans_mat)
+        self.xm_per_px = self.ym_per_px * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
+        self.perspective_done_at =  datetime.utcnow().timestamp()
+        if verbose :       
+            img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
+            cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
+            cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
+
+            cv2.circle(img_orig,tuple(vanishing_point),10, color=(0,0,255), thickness=5)
+      
+            cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
+            cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
+            # cv2.imshow(cv2.hconcat((img_orig, cv2.resize(img, img_orig.shape))))
+        return
         
     
     def process_image(self, img):
@@ -218,20 +303,19 @@ class AdvancedLaneDetectorWithMemory:
         
         # Create the undistorted and binary perspective transforms
         img_size = (undist_img.shape[1], undist_img.shape[0])
-        undist_img_psp = cv2.warpPerspective(undist_img, self.M_psp, img_size, flags=cv2.INTER_LINEAR)
-        thres_img_psp = cv2.warpPerspective(thres_img,  img_size, flags=cv2.INTER_LINEAR)
-        
+        undist_img_psp = cv2.warpPerspective(undist_img, self.trans_mat, img_size, flags=cv2.INTER_LINEAR)
+        thres_img_psp = cv2.warpPerspective(thres_img, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))# img_size,)# flags=cv2.INTER_LINEAR)
         ll, rl = self.compute_lane_lines(thres_img_psp)
         lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
 
         drawn_lines = self.draw_lane_lines(thres_img_psp, ll, rl)        
-        #plt.imshow(drawn_lines)
+        plt.imshow(drawn_lines)
         
         drawn_lines_regions = self.draw_lane_lines_regions(thres_img_psp, ll, rl)
-        #plt.imshow(drawn_lines_regions)
+        plt.imshow(drawn_lines_regions)
         
         drawn_lane_area = self.draw_lane_area(thres_img_psp, undist_img, ll, rl)        
-        #plt.imshow(drawn_lane_area)
+        plt.imshow(drawn_lane_area)
         
         drawn_hotspots = self.draw_lines_hotspots(thres_img_psp, ll, rl)
         
@@ -316,12 +400,14 @@ class AdvancedLaneDetectorWithMemory:
 
         # Draw the lane onto the warped blank image
         cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
-
+        cv2.imwrite(self.temp_dir+"frame.jpg", color_warp)
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
-        newwarp = cv2.warpPerspective(color_warp, self.M_inv_psp, (undist_img.shape[1], undist_img.shape[0])) 
+        newwarp = cv2.warpPerspective(color_warp, self.inv_trans_mat, (undist_img.shape[1], undist_img.shape[0])) 
+        cv2.imwrite(self.temp_dir+"frame.jpg", newwarp)
+        cv2.imwrite(self.temp_dir+"frame.jpg", warped_img*125)
         # Combine the result with the original image
         result = cv2.addWeighted(undist_img, 1, newwarp, 0.3, 0)
-        
+        cv2.imwrite(self.temp_dir+"frame.jpg", result)
         return result
         
         
@@ -428,8 +514,18 @@ class AdvancedLaneDetectorWithMemory:
         """
 
         # Take a histogram of the bottom half of the image, summing pixel values column wise 
-        histogram = np.sum(warped_img[warped_img.shape[0]//2:,:], axis=0)
-        
+        # histogram = np.sum(warped_img[warped_img.shape[0]*2//3:,:], axis=0)
+        histogram = np.sum(warped_img, axis=0)
+        fig, ax = plt.subplots(1, 2, figsize=(15,4))
+        ax[0].imshow(warped_img, cmap='gray')
+        ax[0].axis("off")
+        ax[0].set_title("Binary Thresholded Perspective Transform Image")
+
+        ax[1].plot(histogram)
+        ax[1].set_title("Histogram Of Pixel Intensities (Image Bottom Half)")
+
+        plt.show()
+
         # Find the peak of the left and right halves of the histogram
         # These will be the starting point for the left and right lines 
         midpoint = np.int(histogram.shape[0]//2)
@@ -602,8 +698,8 @@ if __name__ == "__main__":
     pts = np.array([[210,bottom_px],[595,450],[690,450], [1110, bottom_px]], np.int32)
     src_pts = pts.astype(np.float32)
     dst_pts = np.array([[200, bottom_px], [200, 0], [1000, 0], [1000, bottom_px]], np.float32)
-    dimn = (img.shape[0] , img.shape[1])
-    ld = AdvancedLaneDetectorWithMemory( src_pts, dst_pts, 5, 100, 5, img_dimensions = dimn,)
+    print(src_pts,dst_pts)
+    ld = AdvancedLaneDetectorWithMemory( img)
     image =  cv2.imread("./images/test6.jpg")
     proc_img = ld.process_image(image)
     cv2.imwrite("frame.jpg",proc_img)
