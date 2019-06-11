@@ -113,7 +113,7 @@ def create_queue(length = 10):
 
 
 
-class LaneLine:
+class LANE_LINE:
     def __init__(self):
         
         self.polynomial_coeff = None
@@ -124,7 +124,7 @@ class LaneLine:
 
 
 
-class LaneLineHistory:
+class LANE_HISTORY:
     def __init__(self, queue_depth=2, test_points=[50, 300, 500, 700], poly_max_deviation_distance=150):
         self.lane_lines = create_queue(queue_depth)
         self.smoothed_poly = None
@@ -164,7 +164,7 @@ class LaneLineHistory:
 
 
 
-class AdvancedLaneDetectorWithMemory:
+class LANE_DETECTION:
     """
     The AdvancedLaneDetectorWithMemory is a class that can detect lines on the road
     """
@@ -176,7 +176,7 @@ class AdvancedLaneDetectorWithMemory:
     img_dimensions=(540, 960)
     lane_width_px=800
     temp_dir = "./images/detection/"
-    sliding_windows_per_line = 10 
+    sliding_windows_per_line = 20 
     sliding_window_half_width=100
     sliding_window_recenter_thres=25
     lane_center_px_psp=600
@@ -188,8 +188,8 @@ class AdvancedLaneDetectorWithMemory:
         # IMAGE PROPERTIES
         self.image =  img
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
-        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1.1))
-        self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.25)
+        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1.05))
+        self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
         self.calc_perspective()
         
         
@@ -201,8 +201,8 @@ class AdvancedLaneDetectorWithMemory:
         self.ploty = np.linspace(0, self.UNWARPED_SIZE[0] - 1, self.UNWARPED_SIZE[0])
         self.previous_left_lane_line = None
         self.previous_right_lane_line = None
-        self.previous_left_lane_lines = LaneLineHistory()
-        self.previous_right_lane_lines = LaneLineHistory()
+        self.previous_left_lane_lines = LANE_HISTORY()
+        self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
 
     def calc_perspective(self, verbose =  True):
@@ -235,7 +235,7 @@ class AdvancedLaneDetectorWithMemory:
                 Rhs += np.matmul(outer, point)
         vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
         self.lane_center_px_psp=vanishing_point[0]
-        top = vanishing_point[1] + 50
+        top = vanishing_point[1] + 20
         bottom = self.img_dimensions[0]+2000
         
         def on_line(p1, p2, ycoord):
@@ -509,13 +509,13 @@ class AdvancedLaneDetectorWithMemory:
         
     def compute_lane_lines(self, warped_img):
         """
-        Returns the tuple (left_lane_line, right_lane_line) which represents respectively the LaneLine instances for
+        Returns the tuple (left_lane_line, right_lane_line) which represents respectively the LANE_LINE instances for
         the computed left and right lanes, for the supplied binary warped image
         """
 
         # Take a histogram of the bottom half of the image, summing pixel values column wise 
-        # histogram = np.sum(warped_img[warped_img.shape[0]*2//3:,:], axis=0)
-        histogram = np.sum(warped_img, axis=0)
+        histogram = np.sum(warped_img[warped_img.shape[0]*2//4:,:], axis=0)
+        # histogram = np.sum(warped_img, axis=0)
         fig, ax = plt.subplots(1, 2, figsize=(15,4))
         ax[0].imshow(warped_img, cmap='gray')
         ax[0].axis("off")
@@ -558,8 +558,8 @@ class AdvancedLaneDetectorWithMemory:
         right_lane_inds = []
         
         # Our lane line objects we store the result of this computation
-        left_line = LaneLine()
-        right_line = LaneLine()
+        left_line = LANE_LINE()
+        right_line = LANE_LINE()
                         
         if self.previous_left_lane_line is not None and self.previous_right_lane_line is not None:
             # We have already computed the lane lines polynomials from a previous image
@@ -699,7 +699,7 @@ if __name__ == "__main__":
     src_pts = pts.astype(np.float32)
     dst_pts = np.array([[200, bottom_px], [200, 0], [1000, 0], [1000, bottom_px]], np.float32)
     print(src_pts,dst_pts)
-    ld = AdvancedLaneDetectorWithMemory( img)
+    ld = LANE_DETECTION( img)
     image =  cv2.imread("./images/test6.jpg")
     proc_img = ld.process_image(image)
     cv2.imwrite("frame.jpg",proc_img)
