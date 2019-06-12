@@ -136,10 +136,8 @@ class LANE_HISTORY:
             self.lane_lines.append(lane_line)
             self.get_smoothed_polynomial()
             return True
-        
-        test_y_smooth = np.asarray(list(map(lambda x: self.smoothed_poly[0] * x**2 + self.smoothed_poly[1] * x + self.smoothed_poly[2], self.test_points)))
-        test_y_new = np.asarray(list(map(lambda x: lane_line.polynomial_coeff[0] * x**2 + lane_line.polynomial_coeff[1] * x + lane_line.polynomial_coeff[2], self.test_points)))
-        
+        test_y_smooth = np.asarray(list(map(lambda x: np.polyval(self.smoothed_poly,x), self.test_points)))
+        test_y_new = np.asarray(list(map(lambda x: np.polyval(lane_line.polynomial_coeff,x), self.test_points)))
         dist = np.absolute(test_y_smooth - test_y_new)
         
         #dist = np.absolute(self.smoothed_poly - lane_line.polynomial_coeff)
@@ -176,15 +174,15 @@ class LANE_DETECTION:
     img_dimensions=(540, 960)
     lane_width_px=800
     temp_dir = "./images/detection/"
-    sliding_windows_per_line = 20 
-    sliding_window_half_width=100
-    sliding_window_recenter_thres=25
+    sliding_windows_per_line = 15
+    sliding_window_half_width=120
+    sliding_window_recenter_thres=5
     lane_center_px_psp=600
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
         self.objpts = None
         self.imgpts = None
-        
+        self.lane_roi = None
         # IMAGE PROPERTIES
         self.image =  img
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
@@ -196,8 +194,8 @@ class LANE_DETECTION:
 
         # LANE PROPERTIES
         # We can pre-compute some data here
-        self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
-        self.xm_per_px = self.real_world_lane_size_meters[1] / self.lane_width_px
+        # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
+        # self.xm_per_px = self.real_world_lane_size_meters[1] / self.lane_width_px
         self.ploty = np.linspace(0, self.UNWARPED_SIZE[0] - 1, self.UNWARPED_SIZE[0])
         self.previous_left_lane_line = None
         self.previous_right_lane_line = None
@@ -207,20 +205,33 @@ class LANE_DETECTION:
 
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]],[self.img_dimensions[1],self.img_dimensions[0]],
-                    [self.img_dimensions[1]//2+100,-0*self.img_dimensions[0]],
-                     [self.img_dimensions[1]//2-100,-0*self.img_dimensions[0]]], dtype=np.int32)
+        roi_points = np.array([[0, self.img_dimensions[0]*2//3],
+                    [0, self.img_dimensions[0]],
+                    [self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1], self.img_dimensions[0]*2//3],
+                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
+                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
-        
+
+        self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
+        lane_roi_points = np.array([
+                    [0, self.img_dimensions[0]],
+                    [self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
+                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
+        cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
+
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         mn_hsl = np.median(grey) #grey.median()
-        edges = cv2.Canny(grey, int(mn_hsl*4), int(mn_hsl*3))
+        edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
-        edges2 = edges*roi
-        cv2.imwrite(self.temp_dir+"mask.jpg", edges2)
-        lines = cv2.HoughLinesP(edges*roi,rho = 4,theta = np.pi/180,threshold = 4,minLineLength = 80,maxLineGap = 50)
+
+        cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
+        cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
+
+        lines = cv2.HoughLinesP(edges*roi,rho = 5,theta = np.pi/180,threshold = 20,minLineLength = 150,maxLineGap = 20)
 
        
         # print(lines)
@@ -264,18 +275,20 @@ class LANE_DETECTION:
         histogram = np.sum(mask[mask.shape[0]//2:,:], axis=0)
         # delta1 =  histogram[:-1]-histogram[1:]
         # delta2 =  delta1[:-1]-delta1[1:]
-        
+
         x1 = np.argmax(histogram[:histogram.shape[0]//2])
         x2 = histogram.shape[0]//2  +np.argmax(histogram[histogram.shape[0]//2 :])
 
         if (x2-x1<min_wid):
             min_wid = x2-x1
-        self.ym_per_px = min_wid/self.real_world_lane_size_meters[1]
+        self.px_per_xm = min_wid/self.real_world_lane_size_meters[1]
+        self.xm_per_px =  1/self.px_per_xm
         if False :#self.camera.callibration_done :
             Lh = 1#np.linalg.inv(np.matmul(self.trans_mat, self.camera.cam_matrix))
         else:
             Lh = np.linalg.inv(self.trans_mat)
-        self.xm_per_px = self.ym_per_px * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
+        self.px_per_ym = self.px_per_xm * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
+        self.ym_per_px =  1/self.px_per_ym
         self.perspective_done_at =  datetime.utcnow().timestamp()
         if verbose :       
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
@@ -300,22 +313,22 @@ class LANE_DETECTION:
         undist_img =  img.copy()
         # Produce binary thresholded image from color and gradients
         thres_img = get_combined_binary_thresholded_img(undist_img)
-        
+        thresh_img_roi = thres_img * self.lane_roi
         # Create the undistorted and binary perspective transforms
         img_size = (undist_img.shape[1], undist_img.shape[0])
         undist_img_psp = cv2.warpPerspective(undist_img, self.trans_mat, img_size, flags=cv2.INTER_LINEAR)
-        thres_img_psp = cv2.warpPerspective(thres_img, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))# img_size,)# flags=cv2.INTER_LINEAR)
+        thres_img_psp = cv2.warpPerspective(thresh_img_roi, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))# img_size,)# flags=cv2.INTER_LINEAR)
         ll, rl = self.compute_lane_lines(thres_img_psp)
         lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
 
         drawn_lines = self.draw_lane_lines(thres_img_psp, ll, rl)        
-        plt.imshow(drawn_lines)
+        # plt.imshow(drawn_lines)
         
         drawn_lines_regions = self.draw_lane_lines_regions(thres_img_psp, ll, rl)
-        plt.imshow(drawn_lines_regions)
+        # plt.imshow(drawn_lines_regions)
         
         drawn_lane_area = self.draw_lane_area(thres_img_psp, undist_img, ll, rl)        
-        plt.imshow(drawn_lane_area)
+        # plt.imshow(drawn_lane_area)
         
         drawn_hotspots = self.draw_lines_hotspots(thres_img_psp, ll, rl)
         
@@ -514,17 +527,17 @@ class LANE_DETECTION:
         """
 
         # Take a histogram of the bottom half of the image, summing pixel values column wise 
-        histogram = np.sum(warped_img[warped_img.shape[0]*2//4:,:], axis=0)
+        histogram = np.sum(warped_img[warped_img.shape[0]*2//3:,:], axis=0)
         # histogram = np.sum(warped_img, axis=0)
-        fig, ax = plt.subplots(1, 2, figsize=(15,4))
-        ax[0].imshow(warped_img, cmap='gray')
-        ax[0].axis("off")
-        ax[0].set_title("Binary Thresholded Perspective Transform Image")
+        # fig, ax = plt.subplots(1, 2, figsize=(15,4))
+        # ax[0].imshow(warped_img, cmap='gray')
+        # ax[0].axis("off")
+        # ax[0].set_title("Binary Thresholded Perspective Transform Image")
 
-        ax[1].plot(histogram)
-        ax[1].set_title("Histogram Of Pixel Intensities (Image Bottom Half)")
+        # ax[1].plot(histogram)
+        # ax[1].set_title("Histogram Of Pixel Intensities (Image Bottom Half)")
 
-        plt.show()
+        # plt.show()
 
         # Find the peak of the left and right halves of the histogram
         # These will be the starting point for the left and right lines 
