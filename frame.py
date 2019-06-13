@@ -178,8 +178,9 @@ class FRAME :
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
             self.lane = LANE_DETECTION(self.image)
-        
-        return cv2.perspectiveTransform(pos, self.lane.inv_trans_mat)
+        # print("INV", cv2.perspectiveTransform(pos, self.lane.inv_trans_mat))
+        # print("DIR", cv2.perspectiveTransform(pos, self.lane.trans_mat))
+        return cv2.perspectiveTransform(pos, self.lane.trans_mat)
         #cv2.warpPerspective(image, self.trans_mat, self.UNWARPED_SIZE)
   
     
@@ -252,7 +253,7 @@ class FRAME :
     
     def update_trackers(self, img,plot = False):
         image = img.copy()
-        self.lane.process_image( img)
+        lane_img = self.lane.process_image( img)
         for n, obs in enumerate(self.obstacles):
 
             success, corwh = obs.tracker.update(image)
@@ -286,7 +287,7 @@ class FRAME :
             self.obstacles[i].lane =  lane
 
         if plot and self.count>1: 
-           self.draw_lane_weighted(img)
+           self.draw_lane_weighted(lane_img)
         return
 
     def warp(self, img):
