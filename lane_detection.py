@@ -14,9 +14,9 @@ def compute_hls_white_yellow_binary(rgb_img):
     
     # Compute a binary thresholded image where yellow is isolated from HLS components
     img_hls_yellow_bin = np.zeros_like(hls_img[:,:,0])
-    img_hls_yellow_bin[((hls_img[:,:,0] >= 20) & (hls_img[:,:,0] <= 45))
-                 & ((hls_img[:,:,1] >= 30) & (hls_img[:,:,1] <= 204))
-                 & ((hls_img[:,:,2] >= 115) & (hls_img[:,:,2] <= 255))                
+    img_hls_yellow_bin[((hls_img[:,:,0] >= 20) & (hls_img[:,:,0] <= 55))
+                 & ((hls_img[:,:,1] >= 80) & (hls_img[:,:,1] <= 255))
+                 & ((hls_img[:,:,2] >= 100) & (hls_img[:,:,2] <= 255))                
                 ] = 1
     
     # Compute a binary thresholded image where white is isolated from HLS components
@@ -174,9 +174,9 @@ class LANE_DETECTION:
     img_dimensions=(540, 960)
     lane_width_px=800
     temp_dir = "./images/detection/"
-    sliding_windows_per_line = 15
-    sliding_window_half_width=120
-    sliding_window_recenter_thres=5
+    sliding_windows_per_line = 30
+    sliding_window_half_width=100
+    sliding_window_recenter_thres=40
     lane_center_px_psp=600
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
@@ -189,8 +189,8 @@ class LANE_DETECTION:
         self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1.05))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
         self.calc_perspective()
-        
-        
+        x =  np.linspace(0,self.UNWARPED_SIZE[1]-1, self.UNWARPED_SIZE[1])
+        self.parabola = -5*x*(x-self.UNWARPED_SIZE[1])
 
         # LANE PROPERTIES
         # We can pre-compute some data here
@@ -202,7 +202,8 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-
+        self.margin_red = 0.95
+        
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[0, self.img_dimensions[0]*2//3],
@@ -212,15 +213,17 @@ class LANE_DETECTION:
                     [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
                     [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
+        x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
+        grad= np.tile(5*x,self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
 
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
         lane_roi_points = np.array([
-                    [0, self.img_dimensions[0]],
-                    [self.img_dimensions[1],self.img_dimensions[0]],
-                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
-                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
+                    [self.img_dimensions[1]*7//80, self.img_dimensions[0]],
+                    [self.img_dimensions[1]*73//80,self.img_dimensions[0]],
+                    [self.img_dimensions[1]*14//25,self.img_dimensions[0]*5//8],
+                    [self.img_dimensions[1]*12//25,self.img_dimensions[0]*5//8]], dtype=np.int32)
         cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
-
+        self.lane_roi =  self.lane_roi*grad
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -228,8 +231,8 @@ class LANE_DETECTION:
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
 
-        cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
-        cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
+        # cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
+        # cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
 
         lines = cv2.HoughLinesP(edges*roi,rho = 5,theta = np.pi/180,threshold = 20,minLineLength = 150,maxLineGap = 20)
 
@@ -247,7 +250,7 @@ class LANE_DETECTION:
         vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
         self.lane_center_px_psp=vanishing_point[0]
         top = vanishing_point[1] + 20
-        bottom = self.img_dimensions[0]+2000
+        bottom = self.img_dimensions[0]+500
         
         def on_line(p1, p2, ycoord):
             return [p1[0]+ (p2[0]-p1[0])/float(p2[1]-p1[1])*(ycoord-p1[1]), ycoord]
@@ -272,6 +275,10 @@ class LANE_DETECTION:
         mask = grey[:,:,1]>128
         mask[:, :50]=0
         mask[:, -50:]=0
+        x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
+        grad= np.tile(5*x,mask.shape[1]).reshape((mask.shape[0], mask.shape[1]))
+
+        mask =  mask * grad
         histogram = np.sum(mask[mask.shape[0]//2:,:], axis=0)
         # delta1 =  histogram[:-1]-histogram[1:]
         # delta2 =  delta1[:-1]-delta1[1:]
@@ -297,8 +304,8 @@ class LANE_DETECTION:
 
             cv2.circle(img_orig,tuple(vanishing_point),10, color=(0,0,255), thickness=5)
       
-            cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
-            cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
+            # cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
+            # cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
             # cv2.imshow(cv2.hconcat((img_orig, cv2.resize(img, img_orig.shape))))
         return
         
@@ -314,6 +321,7 @@ class LANE_DETECTION:
         # Produce binary thresholded image from color and gradients
         thres_img = get_combined_binary_thresholded_img(undist_img)
         thresh_img_roi = thres_img * self.lane_roi
+        # cv2.imwrite(self.temp_dir+"frame.jpg",undist_img* np.dstack((self.lane_roi>0,self.lane_roi>0,self.lane_roi>0)))
         # Create the undistorted and binary perspective transforms
         img_size = (undist_img.shape[1], undist_img.shape[0])
         undist_img_psp = cv2.warpPerspective(undist_img, self.trans_mat, img_size, flags=cv2.INTER_LINEAR)
@@ -413,14 +421,14 @@ class LANE_DETECTION:
 
         # Draw the lane onto the warped blank image
         cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
-        cv2.imwrite(self.temp_dir+"frame.jpg", color_warp)
+        # cv2.imwrite(self.temp_dir+"frame.jpg", color_warp)
         # Warp the blank back to original image space using inverse perspective matrix (Minv)
         newwarp = cv2.warpPerspective(color_warp, self.inv_trans_mat, (undist_img.shape[1], undist_img.shape[0])) 
-        cv2.imwrite(self.temp_dir+"frame.jpg", newwarp)
-        cv2.imwrite(self.temp_dir+"frame.jpg", warped_img*125)
+        # cv2.imwrite(self.temp_dir+"frame.jpg", newwarp)
+        # cv2.imwrite(self.temp_dir+"frame.jpg", warped_img*125)
         # Combine the result with the original image
         result = cv2.addWeighted(undist_img, 1, newwarp, 0.3, 0)
-        cv2.imwrite(self.temp_dir+"frame.jpg", result)
+        # cv2.imwrite(self.temp_dir+"frame.jpg", result)
         return result
         
         
@@ -527,16 +535,16 @@ class LANE_DETECTION:
         """
 
         # Take a histogram of the bottom half of the image, summing pixel values column wise 
-        histogram = np.sum(warped_img[warped_img.shape[0]*2//3:,:], axis=0)
+        histogram = np.sum(warped_img[warped_img.shape[0]*2//4:,:], axis=0)
+        histogram = histogram * self.parabola
         # histogram = np.sum(warped_img, axis=0)
-        # fig, ax = plt.subplots(1, 2, figsize=(15,4))
+        # fig, ax = plt.subplots(1, 3, figsize=(15,4))
         # ax[0].imshow(warped_img, cmap='gray')
         # ax[0].axis("off")
         # ax[0].set_title("Binary Thresholded Perspective Transform Image")
 
         # ax[1].plot(histogram)
         # ax[1].set_title("Histogram Of Pixel Intensities (Image Bottom Half)")
-
         # plt.show()
 
         # Find the peak of the left and right halves of the histogram
@@ -600,7 +608,10 @@ class LANE_DETECTION:
             print("Non zeros found below thresholds, begining sliding window - pct={0}".format(non_zero_found_pct))
             left_lane_inds = []
             right_lane_inds = []
-
+            left_centers = []
+            right_centers = []
+            left_center_idx = []
+            right_center_idx =[]
             # Step through the windows one by one
             for window in range(self.sliding_windows_per_line):
                 # Identify window boundaries in x and y (and right and left)
@@ -628,15 +639,31 @@ class LANE_DETECTION:
                 (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
                             
                 # Append these indices to the lists
-                left_lane_inds.append(good_left_inds)
-                right_lane_inds.append(good_right_inds)
-
+                
+                
+                # gap =  rightx_current - leftx_current
                 # If you found > minpix pixels, recenter next window on their mean position
                 if len(good_left_inds) > minpix:
                     leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+                    left_lane_inds.append(good_left_inds)
+                    left_centers.append(leftx_current)
+                    left_center_idx.append(window)
+                elif len(left_center_idx) > 3 :
+                    left_coef = np.polyfit(np.array(left_center_idx),np.array(left_centers),2)
+                    leftx_current = int(np.polyval(left_coef, window+1))
                 if len(good_right_inds) > minpix:        
                     rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
-
+                    right_lane_inds.append(good_right_inds)
+                    right_centers.append(rightx_current)
+                    right_center_idx.append(window)
+                elif len(right_center_idx) > 3 :
+                    right_coef = np.polyfit(np.array(right_center_idx),np.array(right_centers),2)
+                    rightx_current = int(np.polyval(right_coef, window+1))
+                # if len(good_left_inds) - len(good_right_inds) :
+                #     rightx_current = leftx_current + gap
+                # else:
+                #     leftx_current = rightx_current - gap
+                margin =  int(margin * self.margin_red)
             # Concatenate the arrays of indices since we now have a list of multiple arrays (e.g. ([1,3,6],[8,5,2]))
             # We want to create a single array with elements from all those lists (e.g. [1,3,6,8,5,2])
             # These are the indices that are non zero in our sliding windows
@@ -688,8 +715,9 @@ class LANE_DETECTION:
     
         # Generate x and y values for plotting
         ploty = np.linspace(0, warped_img.shape[0] - 1, warped_img.shape[0] )
-        left_fitx = left_fit[0] * ploty**2 + left_fit[1] * ploty + left_fit[2]
-        right_fitx = right_fit[0] * ploty**2 + right_fit[1] * ploty + right_fit[2]
+        
+        left_fitx = np.polyval(left_fit, ploty)
+        right_fitx = np.polyval(right_fit, ploty)
         
         
         left_line.polynomial_coeff = left_fit
@@ -713,7 +741,9 @@ if __name__ == "__main__":
     dst_pts = np.array([[200, bottom_px], [200, 0], [1000, 0], [1000, bottom_px]], np.float32)
     print(src_pts,dst_pts)
     ld = LANE_DETECTION( img)
-    image =  cv2.imread("./images/test6.jpg")
+    image =  cv2.imread("./images/test5.jpg")
+    center =  (image.shape[1]//4,image.shape[0]-100 )
+    cv2.circle(image,center,20, (66, 244, 238),-1)
     proc_img = ld.process_image(image)
-    cv2.imwrite("frame.jpg",proc_img)
+    cv2.imwrite("./images/detection/frame.jpg",proc_img)
 
