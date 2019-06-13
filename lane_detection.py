@@ -202,7 +202,7 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-        self.margin_red = 0.95
+        self.margin_red = 0.975
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
@@ -217,13 +217,6 @@ class LANE_DETECTION:
         grad= np.tile(5*x,self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
 
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
-        lane_roi_points = np.array([
-                    [self.img_dimensions[1]*7//80, self.img_dimensions[0]],
-                    [self.img_dimensions[1]*73//80,self.img_dimensions[0]],
-                    [self.img_dimensions[1]*14//25,self.img_dimensions[0]*5//8],
-                    [self.img_dimensions[1]*12//25,self.img_dimensions[0]*5//8]], dtype=np.int32)
-        cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
-        self.lane_roi =  self.lane_roi*grad
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -251,7 +244,14 @@ class LANE_DETECTION:
         self.lane_center_px_psp=vanishing_point[0]
         top = vanishing_point[1] + 20
         bottom = self.img_dimensions[0]+500
-        
+        lane_roi_points = np.array([
+                    [self.img_dimensions[1]*7//80, self.img_dimensions[0]],
+                    [self.img_dimensions[1]*73//80,self.img_dimensions[0]],
+                    [self.img_dimensions[1]*14//25,vanishing_point[1] - 10],
+                    [self.img_dimensions[1]*12//25,vanishing_point[1] - 10]], dtype=np.int32)
+        cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
+        self.lane_roi =  self.lane_roi*grad
+
         def on_line(p1, p2, ycoord):
             return [p1[0]+ (p2[0]-p1[0])/float(p2[1]-p1[1])*(ycoord-p1[1]), ycoord]
 
