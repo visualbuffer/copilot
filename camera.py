@@ -27,8 +27,8 @@ class VIDEO :
         "id": 0,
         "save": False,
         "anotate": False,
-        "save_path" :'./images/',
-        "path" : "./videos/VID_20190518_181206.mp4",
+        "save_path" :'./images/from_video/',
+        "path" : "./videos/challenge_video.mp4",
         "period" : 0.1
         }
 
@@ -125,6 +125,6 @@ class EVENT :
     self.coordinates : [float, float]
 
 if __name__ == "__main__":
-    video = VIDEO(path = "./videos/solidWhiteRight.mp4", save=True,period = 1)
+    video = VIDEO(path = "./videos/challenge_video.mp4", save=True,period = 1)
     video.extract_frames()
 
