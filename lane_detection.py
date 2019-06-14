@@ -168,16 +168,13 @@ class LANE_DETECTION:
     """
     UNWARPED_SIZE :(int,int)
     WRAPPED_WIDTH  :  int
-    small_img_size=(256, 144)
-    small_img_x_offset=20
-    small_img_y_offset=10
-    img_dimensions=(540, 960)
-    lane_width_px=800
+    _pip_size=(int,int)
+    _pip__x_offset=20
+    _pip__y_offset=10
+    img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    sliding_windows_per_line = 30
-    sliding_window_half_width=100
-    sliding_window_recenter_thres=40
-    lane_center_px_psp=600
+    windows_per_line = 30
+    vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
         self.objpts = None
@@ -191,7 +188,9 @@ class LANE_DETECTION:
         self.calc_perspective()
         x =  np.linspace(0,self.UNWARPED_SIZE[1]-1, self.UNWARPED_SIZE[1])
         self.parabola = -5*x*(x-self.UNWARPED_SIZE[1])
-
+        self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
+        self.window_half_width = int(self.img_dimensions[1]*0.08)
+        self.sliding_window_recenter_thres=int(self.window_half_width*0.4)
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -240,15 +239,14 @@ class LANE_DETECTION:
                 outer = np.matmul(normal, normal.T)
                 Lhs += outer
                 Rhs += np.matmul(outer, point)
-        vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
-        self.lane_center_px_psp=vanishing_point[0]
-        top = vanishing_point[1] + 20
+        self.vanishing_point= np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
+        top =self.vanishing_point[1] + 20
         bottom = self.img_dimensions[0]+500
         lane_roi_points = np.array([
                     [self.img_dimensions[1]*7//80, self.img_dimensions[0]],
                     [self.img_dimensions[1]*73//80,self.img_dimensions[0]],
-                    [self.img_dimensions[1]*14//25,vanishing_point[1] - 10],
-                    [self.img_dimensions[1]*12//25,vanishing_point[1] - 10]], dtype=np.int32)
+                    [self.img_dimensions[1]*14//25,self.vanishing_point[1] - 10],
+                    [self.img_dimensions[1]*12//25,self.vanishing_point[1] - 10]], dtype=np.int32)
         cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
         self.lane_roi =  self.lane_roi*grad
 
@@ -257,10 +255,10 @@ class LANE_DETECTION:
 
 
         #define source and destination targets
-        p1 = [vanishing_point[0] - self.WRAPPED_WIDTH/2, top]
-        p2 = [vanishing_point[0] + self.WRAPPED_WIDTH/2, top]
-        p3 = on_line(p2, vanishing_point, bottom)
-        p4 = on_line(p1, vanishing_point, bottom)
+        p1 = [self.vanishing_point[0] - self.WRAPPED_WIDTH/2, top]
+        p2 = [self.vanishing_point[0] + self.WRAPPED_WIDTH/2, top]
+        p3 = on_line(p2,self.vanishing_point, bottom)
+        p4 = on_line(p1,self.vanishing_point, bottom)
         src_points = np.array([p1,p2,p3,p4], dtype=np.float32)
         # print(src_points,vanishing_point)
         dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
@@ -302,7 +300,7 @@ class LANE_DETECTION:
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
 
-            cv2.circle(img_orig,tuple(vanishing_point),10, color=(0,0,255), thickness=5)
+            cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
 
             return img_orig
       
@@ -356,25 +354,25 @@ class LANE_DETECTION:
         Returns an image with curvature information inscribed
         """
         
-        offset_y = self.small_img_size[1] * 1 + self.small_img_y_offset * 5
-        offset_x = self.small_img_x_offset
+        offset_y = self._pip_size[1] * 1 + self._pip__y_offset * 5
+        offset_x = self._pip__x_offset
         
         template = "{0:17}{1:17}{2:17}"
         txt_header = template.format("Left Curvature", "Right Curvature", "Center Alignment") 
         print(txt_header)
-        txt_values = template.format("{:.4f}m".format(left_curvature_meters), 
-                                     "{:.4f}m".format(right_curvature_meters),
-                                     "{:.4f}m Right".format(center_offset_meters))
+        txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
+                                     "{:.0f}m".format(right_curvature_meters),
+                                     "{:.2f}m Right".format(center_offset_meters))
         if center_offset_meters < 0.0:
-            txt_values = template.format("{:.4f}m".format(left_curvature_meters), 
-                                     "{:.4f}m".format(right_curvature_meters),
-                                     "{:.4f}m Left".format(math.fabs(center_offset_meters)))
+            txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
+                                     "{:.0f}m".format(right_curvature_meters),
+                                     "{:.2f}m Left".format(math.fabs(center_offset_meters)))
             
         
         print(txt_values)
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img, txt_header, (offset_x, offset_y), font, 1, (255,255,255), 1, cv2.LINE_AA)
-        cv2.putText(img, txt_values, (offset_x, offset_y + self.small_img_y_offset * 5), font, 1, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 5), font, 1, (255,255,255), 2, cv2.LINE_AA)
         
         return img
     
@@ -383,25 +381,25 @@ class LANE_DETECTION:
         Returns a new image made up of the lane area image, and the remaining lane images are overlaid as
         small images in a row at the top of the the new image
         """
-        small_lines = cv2.resize(lines_img, self.small_img_size)
-        small_region = cv2.resize(lines_regions_img, self.small_img_size)
-        small_hotspots = cv2.resize(lane_hotspots_img, self.small_img_size)
-        small_color_psp = cv2.resize(psp_color_img, self.small_img_size)
+        small_lines = cv2.resize(lines_img, self._pip_size)
+        small_region = cv2.resize(lines_regions_img, self._pip_size)
+        small_hotspots = cv2.resize(lane_hotspots_img, self._pip_size)
+        small_color_psp = cv2.resize(psp_color_img, self._pip_size)
                 
-        lane_area_img[self.small_img_y_offset: self.small_img_y_offset + self.small_img_size[1], self.small_img_x_offset: self.small_img_x_offset + self.small_img_size[0]] = small_lines
+        lane_area_img[self._pip__y_offset: self._pip__y_offset + self._pip_size[1], self._pip__x_offset: self._pip__x_offset + self._pip_size[0]] = small_lines
         
-        start_offset_y = self.small_img_y_offset 
-        start_offset_x = 2 * self.small_img_x_offset + self.small_img_size[0]
-        lane_area_img[start_offset_y: start_offset_y + self.small_img_size[1], start_offset_x: start_offset_x + self.small_img_size[0]] = small_region
+        start_offset_y = self._pip__y_offset 
+        start_offset_x = 2 * self._pip__x_offset + self._pip_size[0]
+        lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_region
         
-        start_offset_y = self.small_img_y_offset 
-        start_offset_x = 3 * self.small_img_x_offset + 2 * self.small_img_size[0]
-        lane_area_img[start_offset_y: start_offset_y + self.small_img_size[1], start_offset_x: start_offset_x + self.small_img_size[0]] = small_hotspots
+        start_offset_y = self._pip__y_offset 
+        start_offset_x = 3 * self._pip__x_offset + 2 * self._pip_size[0]
+        lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_hotspots
 
-        start_offset_y = self.small_img_y_offset 
-        start_offset_x = 4 * self.small_img_x_offset + 3 * self.small_img_size[0]
-        print(lane_area_img[start_offset_y: start_offset_y + self.small_img_size[1], start_offset_x: start_offset_x + self.small_img_size[0],:].shape)
-        # lane_area_img[start_offset_y: start_offset_y + self.small_img_size[1], start_offset_x: start_offset_x + self.small_img_size[0],:] = small_color_psp
+        start_offset_y = self._pip__y_offset 
+        start_offset_x = 4 * self._pip__x_offset + 3 * self._pip_size[0]
+        print(lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:].shape)
+        # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:] = small_color_psp
         
         
         return lane_area_img
@@ -463,7 +461,7 @@ class LANE_DETECTION:
         """
         # Generate a polygon to illustrate the search window area
         # And recast the x and y points into usable format for cv2.fillPoly()
-        margin = self.sliding_window_half_width
+        margin = self.window_half_width
         ploty = np.linspace(0, warped_img.shape[0] - 1, warped_img.shape[0])
         
         left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - margin, ploty]))])
@@ -514,16 +512,16 @@ class LANE_DETECTION:
         right_fit_cr = np.polyfit(ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
         
         # Now calculate the radii of the curvature
-        left_curverad = ((1 + (2 * left_fit_cr[0] * y_eval * self.ym_per_px + left_fit_cr[1])**2)**1.5) / np.absolute(2 * left_fit_cr[0])
-        right_curverad = ((1 + (2 *right_fit_cr[0] * y_eval * self.ym_per_px + right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
+        left_curverad = int((1 + (2 * left_fit_cr[0] * y_eval * self.ym_per_px + left_fit_cr[1])**2)**1.5) / np.absolute(2 * left_fit_cr[0])
+        right_curverad = int((1 + (2 *right_fit_cr[0] * y_eval * self.ym_per_px + right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
         
         # Use our computed polynomial to determine the car's center position in image space, then
         left_fit = left_line.polynomial_coeff
         right_fit = right_line.polynomial_coeff
         
         center_offset_img_space = (((left_fit[0] * y_eval**2 + left_fit[1] * y_eval + left_fit[2]) + 
-                   (right_fit[0] * y_eval**2 + right_fit[1] * y_eval + right_fit[2])) / 2) - self.lane_center_px_psp
-        center_offset_real_world_m = center_offset_img_space * self.xm_per_px
+                   (right_fit[0] * y_eval**2 + right_fit[1] * y_eval + right_fit[2])) / 2) - self.vanishing_point[0]
+        center_offset_real_world_m = int(center_offset_img_space * self.xm_per_px*100)/100.0
         
         # Now our radius of curvature is in meters        
         return left_curverad, right_curverad, center_offset_real_world_m
@@ -557,7 +555,7 @@ class LANE_DETECTION:
         
 
         # Set height of windows
-        window_height = np.int(warped_img.shape[0]//self.sliding_windows_per_line)
+        window_height = np.int(warped_img.shape[0]//self.windows_per_line)
         # Identify the x and y positions of all nonzero pixels in the image
         # NOTE: nonzero returns a tuple of arrays in y and x directions
         nonzero = warped_img.nonzero()
@@ -573,7 +571,7 @@ class LANE_DETECTION:
 
 
         # Set the width of the windows +/- margin
-        margin = self.sliding_window_half_width
+        margin = self.window_half_width
         # Set minimum number of pixels found to recenter window
         minpix = self.sliding_window_recenter_thres
         # Create empty lists to receive left and right lane pixel indices
@@ -615,7 +613,7 @@ class LANE_DETECTION:
             left_center_idx = []
             right_center_idx =[]
             # Step through the windows one by one
-            for window in range(self.sliding_windows_per_line):
+            for window in range(self.windows_per_line):
                 # Identify window boundaries in x and y (and right and left)
                 # We are moving our windows from the bottom to the top of the screen (highest to lowest y value)
                 win_y_low = warped_img.shape[0] - (window + 1)* window_height
