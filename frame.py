@@ -145,7 +145,7 @@ class FRAME :
             raise ValueError("No Image") 
         self.lane = LANE_DETECTION(self.image)
         self.temp_dir = './images/detection/'
-        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )]
+        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
         self.perspective_done_at = datetime.utcnow().timestamp()
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
         self.area =  self.img_shp[0]*self.img_shp[1]
