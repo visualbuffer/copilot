@@ -392,7 +392,8 @@ class FRAME :
     
     def vehicle_speed(self) :
         return
-def main():
+        
+if __name__ == "__main__":
     import os
     files =  os.listdir("./images/from_video/")
     files  = [f for f in files if f[-3:]=="jpg"]
@@ -408,4 +409,4 @@ def main():
     #    cv2.waitKey(1)
        input("Press Enter to continue...")
     
-main()
+
