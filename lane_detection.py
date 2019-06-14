@@ -303,6 +303,8 @@ class LANE_DETECTION:
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
 
             cv2.circle(img_orig,tuple(vanishing_point),10, color=(0,0,255), thickness=5)
+
+            return img_orig
       
             # cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
             # cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
