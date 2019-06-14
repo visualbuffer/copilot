@@ -145,7 +145,6 @@ class FRAME :
             raise ValueError("No Image") 
         self.lane = LANE_DETECTION(self.image)
         self.temp_dir = './images/detection/'
-        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
         self.perspective_done_at = datetime.utcnow().timestamp()
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
         self.area =  self.img_shp[0]*self.img_shp[1]
@@ -195,6 +194,12 @@ class FRAME :
             
             return np.array([0,0])
     
+    def process_and_plot(self,image):
+        lane_img = self.lane.process_image( image)
+        self.update_trackers(image)
+        if self.count > 1 :
+            lane_img = self.draw_lane_weighted(lane_img)
+        return lane_img
 
     @staticmethod
     def corwh2box(corwh):
@@ -266,11 +271,7 @@ class FRAME :
            
         return
 
-    def process_and_plot(self,image):
-        lane_img = self.lane.process_image( image)
-        self.update_trackers(image)
-        self.draw_lane_weighted(lane_img)
-        return lane_img
+
 
     def warp(self, img):
         now  = datetime.utcnow().timestamp()
