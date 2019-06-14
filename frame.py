@@ -145,12 +145,7 @@ class FRAME :
             raise ValueError("No Image") 
         self.lane = LANE_DETECTION(self.image)
         self.temp_dir = './images/detection/'
-        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )
-        # self.UNWARPED_SIZE  = (int(self.size[0]),int(self.size[1]*.4))
-        # self.WRAPPED_WIDTH =  int(self.UNWARPED_SIZE[0]*1.25)
-        # self.trans_mat  = None
-        # self.inv_trans_mat  = None
-        # self.pixels_per_meter = [0,0]
+        self.size : (int , int) =  (self.image.shape[0] ,  self.image.shape[1] )]
         self.perspective_done_at = datetime.utcnow().timestamp()
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
         self.area =  self.img_shp[0]*self.img_shp[1]
@@ -161,27 +156,15 @@ class FRAME :
         self.obstacles :[OBSTACLE] =[]
         self.__yp = int(self.YOLO_PERIOD*self.fps)
         ### LANE FINDER 
-        # self.lane_found = False
         self.count = 0
-        # self.mask = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
-        # self.roi_mask = np.ones((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
-        # self.total_mask = np.zeros_like(self.roi_mask)
-        # self.warped_mask = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0]), dtype=np.uint8)
-        # self.lane_count = 0
-
-
-        # self.left_line = LaneLineFinder(self.UNWARPED_SIZE, self.pixels_per_meter, -1.8288)  # 6 feet in meters
-        # self.right_line = LaneLineFinder(self.UNWARPED_SIZE, self.pixels_per_meter, 1.8288)
 
 
     def perspective_tfm(self ,  pos) : 
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
             self.lane = LANE_DETECTION(self.image)
-        # print("INV", cv2.perspectiveTransform(pos, self.lane.inv_trans_mat))
-        # print("DIR", cv2.perspectiveTransform(pos, self.lane.trans_mat))
         return cv2.perspectiveTransform(pos, self.lane.trans_mat)
-        #cv2.warpPerspective(image, self.trans_mat, self.UNWARPED_SIZE)
+
   
     
     def get_speed(self):
@@ -192,11 +175,6 @@ class FRAME :
         points =np.array( [box.xmid, box.ymid], dtype='float32').reshape(1,1,2)
         new_points = cv2.perspectiveTransform(points,self.lane.trans_mat)
         new_points =  new_points.reshape(2)
-        # left  = np.polyval(self.lane.previous_left_lane_line.polynomial_coeff,new_points[0]) - new_points[1]
-        # right = np.polyval(self.lane.previous_right_lane_line.polynomial_coeff,new_points[0]) - new_points[1]
-        # points =  points.reshape(2)
-        # left2  = np.polyval(self.lane.previous_left_lane_line.polynomial_coeff,points[1]) - points[0]
-        # right2 = np.polyval(self.lane.previous_right_lane_line.polynomial_coeff,points[1]) - points[0]
         left= np.polyval(self.lane.previous_left_lane_line.polynomial_coeff,new_points[1]) - new_points[0]
         right= np.polyval(self.lane.previous_right_lane_line.polynomial_coeff,new_points[1]) - new_points[0]
         status = "my"
@@ -251,9 +229,8 @@ class FRAME :
             self.obstacles.append(obstacle)
         return
     
-    def update_trackers(self, img,plot = False):
+    def update_trackers(self, img):
         image = img.copy()
-        lane_img = self.lane.process_image( img)
         for n, obs in enumerate(self.obstacles):
 
             success, corwh = obs.tracker.update(image)
@@ -286,9 +263,14 @@ class FRAME :
             lane = self.determine_lane(self.obstacles[i])
             self.obstacles[i].lane =  lane
 
-        if plot and self.count>1: 
-           self.draw_lane_weighted(lane_img)
+           
         return
+
+    def process_and_plot(self,image):
+        lane_img = self.lane.process_image( image)
+        self.update_trackers(image)
+        self.draw_lane_weighted(lane_img)
+        return lane_img
 
     def warp(self, img):
         now  = datetime.utcnow().timestamp()
@@ -340,52 +322,16 @@ class FRAME :
             self.put_text(overlay, b1,   pb1)
             self.put_text(overlay, b2,   pb2)
             self.put_text(overlay, b3,   pb3)
-
-            # centr_lbl = classes[obstructions[box.label]] +"|"+ str(int(box.score*100))+"%" 
-            # top_lbl = str(box._id)+"|"+box.lane
-            # bot_lbl = str(int(box.col_time)) +"s | " + str(int(box.position[0])) + " m | " +str(int(box.velocity[0])) + " m/s"
             past_center =  (int(past[0]/2+past[2]/2), past[3])
-            # font_thk =1
             
             color = ORANGE if box.velocity[1] > 0  else GREEN
             cv2.rectangle(overlay, (box.xmin,box.ymin), (box.xmax,box.ymax), color,2)
             cv2.circle(overlay,past_center,1, GRAY,2)
-            # self.put_text(overlay, top_lbl,   (box.xmin+5, box.ymin))
-            # self.put_text(overlay, centr_lbl,   (box.xmin, box.ymid))
-            # self.put_text(overlay, bot_lbl,   (box.xmin, box.ymax),)
-            # cv2.putText(overlay, top_lbl, 
-            #             (box.xmin+5, box.ymin),  font, 
-            #             6e-4 * image.shape[0],   YELLOW, font_thk)
-            # cv2.putText(overlay, centr_lbl, 
-            #             (box.xmin, box.ymid),  font, 
-            #             6e-4 * image.shape[0], LIGHT_CYAN  , font_thk)
-            # cv2.putText(overlay, bot_lbl, 
-            #             (box.xmin, box.ymax),  font, 
-            #             6e-4 * image.shape[0], LIGHT_CYAN  , font_thk)
         image =  cv2.addWeighted(image, alpha, overlay, beta, gamma)
-        cv2.imwrite(self.temp_dir+"detect.jpg", image)
-        # left_line = self.left_line.get_line_points()
-        # right_line = self.right_line.get_line_points()
-        # both_lines = np.concatenate((left_line, np.flipud(right_line)), axis=0)
-        # lanes = np.zeros((self.UNWARPED_SIZE[1], self.UNWARPED_SIZE[0], 3), dtype=np.uint8)
-        # center_line =  (left_line +  right_line)//2
-        # if 1:#self.lane_found:
-        #     # cv2.fillPoly(lanes, [both_lines.astype(np.int32)], LIGHT_CYAN)
-        #     # cv2.polylines(lanes, [left_line.astype(np.int32)], False,RED ,thickness=5 )
-        #     # cv2.polylines(lanes, [right_line.astype(np.int32)],False,  DARK_BLUE, thickness=5)
-        #     # cv2.polylines(lanes, [center_line.astype(np.int32)],False,  ORANGE, thickness=5)
+        # cv2.imwrite(self.temp_dir+"detect.jpg", image)
 
-        #     # lanes_unwarped = self.unwarp(lanes)
-        #     overlay = cv2.addWeighted(image, alpha, lanes_unwarped, beta, gamma)
-        #     cv2.imwrite(self.temp_dir+"detection.jpg", overlay)
-        # else:
-        #     cv2.putText(image, "Lane lost!", (550, 170), font, fontScale=2.5,
-        #                 thickness=5, color=(255, 255, 255))
-        #     cv2.putText(image, "Lane lost!", (550, 170), font, fontScale=2.5,
-        #                 thickness=3, color=(0, 0, 0))
-        #     cv2.imwrite(self.temp_dir+"detection.jpg", image)
         
-        return 
+        return image
     
      
     
@@ -405,8 +351,8 @@ if __name__ == "__main__":
     # frame.detect_objects(cv2.imread("./images/"+files[0]))
     for i, f in enumerate(files[0:72]):
         # frame.find_lane(cv2.imread("./images/"+f),plot=True)
-       frame.update_trackers(cv2.imread("./images/from_video/"+f),plot=True)
-    #    cv2.waitKey(1)
+       image = frame.process_and_plot(cv2.imread("./images/from_video/"+f))
+       cv2.imwrite("./images/detection/detect.jpg", image)
        input("Press Enter to continue...")
     
 
