@@ -4,34 +4,29 @@ import math
 from datetime import datetime
 from matplotlib import pyplot as plt
 from collections import deque
-
-def compute_hls_white_yellow_binary(rgb_img):
+temp_dir = "images/detection/detect.jpg"
+def compute_hls_white_yellow_binary(image,kernel_size =3):
     """
     Returns a binary thresholded image produced retaining only white and yellow elements on the picture
-    The provided image should be in RGB format
+    The provided image should be in RGB formats
     """
-    hls_img = cv2.cvtColor(rgb_img, cv2.COLOR_RGB2HLS)
-    
-    # Compute a binary thresholded image where yellow is isolated from HLS components
-    img_hls_yellow_bin = np.zeros_like(hls_img[:,:,0])
-    img_hls_yellow_bin[((hls_img[:,:,0] >= 20) & (hls_img[:,:,0] <= 55))
-                 & ((hls_img[:,:,1] >= 80) & (hls_img[:,:,1] <= 255))
-                 & ((hls_img[:,:,2] >= 100) & (hls_img[:,:,2] <= 255))                
-                ] = 1
-    
-    # Compute a binary thresholded image where white is isolated from HLS components
-    img_hls_white_bin = np.zeros_like(hls_img[:,:,0])
-    img_hls_white_bin[((hls_img[:,:,0] >= 0) & (hls_img[:,:,0] <= 255))
-                 & ((hls_img[:,:,1] >= 120) & (hls_img[:,:,1] <= 200))
-                 & ((hls_img[:,:,2] >= 80) & (hls_img[:,:,2] <= 255))                
-                ] = 1
-    
-    # Now combine both
-    img_hls_white_yellow_bin = np.zeros_like(hls_img[:,:,0])
-    img_hls_white_yellow_bin[(img_hls_yellow_bin == 1) | (img_hls_white_bin == 1)] = 1
-
-    return img_hls_white_yellow_bin
-
+    converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
+    # converted = cv2.GaussianBlur(converted, (kernel_size, kernel_size), 0)
+    # yellow color mask  
+    lower = np.uint8([ 10,   0, 60])
+    upper = np.uint8([ 55, 255, 255])
+    yellow_mask = cv2.inRange(converted, lower, upper)
+    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=yellow_mask))
+   
+    # white color mask
+    lower = np.uint8([  0, 200,   0])
+    upper = np.uint8([255, 255, 255])
+    white_mask = cv2.inRange(converted, lower, upper)
+    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=white_mask))
+     # combine the mask
+    mask = cv2.bitwise_or(white_mask, yellow_mask)
+    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=mask))
+    return mask
 
 def mag_sobel(gray_img, kernel_size=3, thres=(0, 255)):
     """
@@ -101,10 +96,17 @@ def get_combined_binary_thresholded_img(undist_img):
     sxy_combined_dir = combined_sobels(sx, sy, sxy, undist_img_gray, kernel_size=15, angle_thres=(np.pi/4, np.pi/2))   
     
     hls_w_y_thres = compute_hls_white_yellow_binary(undist_img)
-    
     combined_binary = np.zeros_like(hls_w_y_thres)
     combined_binary[(sxy_combined_dir == 1) | (hls_w_y_thres == 1)] = 1
-        
+
+
+    cv2.imwrite(temp_dir, sx*150)
+    cv2.imwrite(temp_dir, sy*150)
+    cv2.imwrite(temp_dir, sxy*150)
+    cv2.imwrite(temp_dir, sxy_combined_dir*150)
+    cv2.imwrite(temp_dir, hls_w_y_thres*150)
+    cv2.imwrite(temp_dir, combined_binary*150)
+            
     return combined_binary
 
 
@@ -125,39 +127,46 @@ class LANE_LINE:
 
 
 class LANE_HISTORY:
-    def __init__(self, queue_depth=2, test_points=[50, 300, 500, 700], poly_max_deviation_distance=150):
+    def __init__(self, queue_depth=3, test_points=[50, 300, 500, 700], poly_max_deviation_distance=150):
         self.lane_lines = create_queue(queue_depth)
         self.smoothed_poly = None
         self.test_points = test_points
         self.poly_max_deviation_distance = poly_max_deviation_distance
+        self.lost = False
+        self.lost_count = 0
+        self.max_lost_count = queue_depth
     
     def append(self, lane_line, force=False):
-        if len(self.lane_lines) == 0 or force:
+        if len(self.lane_lines) == 0 or (self.lost_count > self.max_lost_count ) or force:
+            self.lane_lines = create_queue(self.max_lost_count)
+            self.smoothed_poly = None
             self.lane_lines.append(lane_line)
             self.get_smoothed_polynomial()
+            self.lost =  False
+            self.lost_count = 0
+            print("**** RESET****")
             return True
         test_y_smooth = np.asarray(list(map(lambda x: np.polyval(self.smoothed_poly,x), self.test_points)))
         test_y_new = np.asarray(list(map(lambda x: np.polyval(lane_line.polynomial_coeff,x), self.test_points)))
         dist = np.absolute(test_y_smooth - test_y_new)
-        
-        #dist = np.absolute(self.smoothed_poly - lane_line.polynomial_coeff)
-        #dist_max = np.absolute(self.smoothed_poly * self.poly_max_deviation_distance)
         max_dist = dist[np.argmax(dist)]
-        
         if max_dist > self.poly_max_deviation_distance:
             print("**** MAX DISTANCE BREACHED ****")
-            print("y_smooth={0} - y_new={1} - distance={2} - max-distance={3}".format(test_y_smooth, test_y_new, max_dist, self.poly_max_deviation_distance))
-            return False
-        
-        self.lane_lines.append(lane_line)
+            # print("y_smooth={0} - y_new={1} - distance={2} - max-distance={3}".format(test_y_smooth, test_y_new, max_dist, self.poly_max_deviation_distance))
+            self.lost =  True
+            self.lost_count += 1 
+            return False  
+        # self.lane_lines.append(lane_line)
+
+        print("#####APPENDED######")
         self.get_smoothed_polynomial()
-        
+        self.lost =  False
+        self.lost_count = 0
         return True
     
     def get_smoothed_polynomial(self):
         all_coeffs = np.asarray(list(map(lambda lane_line: lane_line.polynomial_coeff, self.lane_lines)))
         self.smoothed_poly = np.mean(all_coeffs, axis=0)
-        
         return self.smoothed_poly
 
 
@@ -173,7 +182,7 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 30
+    windows_per_line = 20
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
@@ -183,14 +192,17 @@ class LANE_DETECTION:
         # IMAGE PROPERTIES
         self.image =  img
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
-        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1.05))
+        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*0.95))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
         self.calc_perspective()
-        x =  np.linspace(0,self.UNWARPED_SIZE[1]-1, self.UNWARPED_SIZE[1])
-        self.parabola = -5*x*(x-self.UNWARPED_SIZE[1])
+        
+        self.window_half_width = int(self.img_dimensions[1]*0.06)
+        self.lb = int(0.20*self.img_dimensions[1])
+        self.ub = int(0.35*self.img_dimensions[1])
+        x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
+        self.parabola = -5*x*(x+self.lb -self.ub)
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.window_half_width = int(self.img_dimensions[1]*0.08)
-        self.sliding_window_recenter_thres=int(self.window_half_width*0.4)
+        self.sliding_window_recenter_thres=int(self.window_half_width*0.6)
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -201,7 +213,7 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-        self.margin_red = 0.975
+        self.margin_red = 0.95
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
@@ -241,12 +253,12 @@ class LANE_DETECTION:
                 Rhs += np.matmul(outer, point)
         self.vanishing_point= np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
         top =self.vanishing_point[1] + 20
-        bottom = self.img_dimensions[0]+500
+        bottom = self.img_dimensions[0]+200
         lane_roi_points = np.array([
-                    [self.img_dimensions[1]*7//80, self.img_dimensions[0]],
-                    [self.img_dimensions[1]*73//80,self.img_dimensions[0]],
-                    [self.img_dimensions[1]*14//25,self.vanishing_point[1] - 10],
-                    [self.img_dimensions[1]*12//25,self.vanishing_point[1] - 10]], dtype=np.int32)
+                    [self.img_dimensions[1]*6//80, self.img_dimensions[0]],
+                    [self.img_dimensions[1]*74//80,self.img_dimensions[0]],
+                    [self.vanishing_point[0] + 2*self.img_dimensions[1]//25,self.vanishing_point[1] - 10],
+                    [self.vanishing_point[0] - 2*self.img_dimensions[1]//25,self.vanishing_point[1] - 10]], dtype=np.int32)
         cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
         self.lane_roi =  self.lane_roi*grad
 
@@ -301,12 +313,9 @@ class LANE_DETECTION:
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
 
             cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
-
+            cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
+            cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
             return img_orig
-      
-            # cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
-            # cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
-            # cv2.imshow(cv2.hconcat((img_orig, cv2.resize(img, img_orig.shape))))
         return
         
     
@@ -319,7 +328,8 @@ class LANE_DETECTION:
         # undist_img = undistort_image(img, self.objpts, self.imgpts)
         undist_img =  img.copy()
         # Produce binary thresholded image from color and gradients
-        thres_img = get_combined_binary_thresholded_img(undist_img)
+        # thres_img = get_combined_binary_thresholded_img(undist_img)
+        thres_img=compute_hls_white_yellow_binary(undist_img)
         thresh_img_roi = thres_img * self.lane_roi
         # cv2.imwrite(self.temp_dir+"frame.jpg",undist_img* np.dstack((self.lane_roi>0,self.lane_roi>0,self.lane_roi>0)))
         # Create the undistorted and binary perspective transforms
@@ -359,7 +369,7 @@ class LANE_DETECTION:
         
         template = "{0:17}{1:17}{2:17}"
         txt_header = template.format("Left Curvature", "Right Curvature", "Center Alignment") 
-        print(txt_header)
+        # print(txt_header)
         txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
                                      "{:.0f}m".format(right_curvature_meters),
                                      "{:.2f}m Right".format(center_offset_meters))
@@ -369,7 +379,7 @@ class LANE_DETECTION:
                                      "{:.2f}m Left".format(math.fabs(center_offset_meters)))
             
         
-        print(txt_values)
+        # print(txt_values)
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(img, txt_header, (offset_x, offset_y), font, 1, (255,255,255), 1, cv2.LINE_AA)
         cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 5), font, 1, (255,255,255), 2, cv2.LINE_AA)
@@ -398,7 +408,7 @@ class LANE_DETECTION:
 
         start_offset_y = self._pip__y_offset 
         start_offset_x = 4 * self._pip__x_offset + 3 * self._pip_size[0]
-        print(lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:].shape)
+        # print(lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:].shape)
         # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:] = small_color_psp
         
         
@@ -526,36 +536,35 @@ class LANE_DETECTION:
         # Now our radius of curvature is in meters        
         return left_curverad, right_curverad, center_offset_real_world_m
         
-        
+    def detect_lane_start(self, image):
+        histx =   np.sum(image[image.shape[0]*2//3:,:], axis=0)
+        histx = histx * self.parabola
+
+        # fig, ax = plt.subplots(1, 3, figsize=(15,4))
+        # ax[0].imshow(image, cmap='gray')
+        # ax[0].axis("off")
+        # ax[0].set_title("Binary Thresholded Perspective Transform Image")
+
+        # ax[1].plot(histogram)
+        # ax[2].plot(histx)
+        # plt.show()
+        return np.argmax(histx)
+    
         
     def compute_lane_lines(self, warped_img):
         """
         Returns the tuple (left_lane_line, right_lane_line) which represents respectively the LANE_LINE instances for
         the computed left and right lanes, for the supplied binary warped image
         """
-
+        margin = self.window_half_width
+        margin15 = int(margin*1 )
+        minpix = self.sliding_window_recenter_thres
+        window_height = np.int(warped_img.shape[0]//self.windows_per_line)
         # Take a histogram of the bottom half of the image, summing pixel values column wise 
-        histogram = np.sum(warped_img[warped_img.shape[0]*2//4:,:], axis=0)
-        histogram = histogram * self.parabola
-        # histogram = np.sum(warped_img, axis=0)
-        # fig, ax = plt.subplots(1, 3, figsize=(15,4))
-        # ax[0].imshow(warped_img, cmap='gray')
-        # ax[0].axis("off")
-        # ax[0].set_title("Binary Thresholded Perspective Transform Image")
-
-        # ax[1].plot(histogram)
-        # ax[1].set_title("Histogram Of Pixel Intensities (Image Bottom Half)")
-        # plt.show()
-
-        # Find the peak of the left and right halves of the histogram
-        # These will be the starting point for the left and right lines 
-        midpoint = np.int(histogram.shape[0]//2)
-        leftx_base = np.argmax(histogram[:midpoint])
-        rightx_base = np.argmax(histogram[midpoint:]) + midpoint # don't forget to offset by midpoint!
-        
+              
 
         # Set height of windows
-        window_height = np.int(warped_img.shape[0]//self.windows_per_line)
+        
         # Identify the x and y positions of all nonzero pixels in the image
         # NOTE: nonzero returns a tuple of arrays in y and x directions
         nonzero = warped_img.nonzero()
@@ -564,47 +573,41 @@ class LANE_DETECTION:
         
         total_non_zeros = len(nonzeroy)
         non_zero_found_pct = 0.0
-        
-        # Current positions to be updated for each window
-        leftx_current = leftx_base
-        rightx_current = rightx_base    
-
-
-        # Set the width of the windows +/- margin
-        margin = self.window_half_width
-        # Set minimum number of pixels found to recenter window
-        minpix = self.sliding_window_recenter_thres
-        # Create empty lists to receive left and right lane pixel indices
         left_lane_inds = []
         right_lane_inds = []
-        
-        # Our lane line objects we store the result of this computation
         left_line = LANE_LINE()
-        right_line = LANE_LINE()
-                        
+        right_line = LANE_LINE()                 
         if self.previous_left_lane_line is not None and self.previous_right_lane_line is not None:
-            # We have already computed the lane lines polynomials from a previous image
             left_lane_inds = ((nonzerox > (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
                                            + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
-                                           + self.previous_left_lane_line.polynomial_coeff[2] - margin)) 
+                                           + self.previous_left_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
                                             + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
-                                            + self.previous_left_lane_line.polynomial_coeff[2] + margin))) 
+                                            + self.previous_left_lane_line.polynomial_coeff[2] + margin15))) 
 
             right_lane_inds = ((nonzerox > (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
                                            + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
-                                           + self.previous_right_lane_line.polynomial_coeff[2] - margin)) 
+                                           + self.previous_right_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
                                             + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
-                                            + self.previous_right_lane_line.polynomial_coeff[2] + margin))) 
+                                            + self.previous_right_lane_line.polynomial_coeff[2] + margin15))) 
             
             non_zero_found_left = np.sum(left_lane_inds)
             non_zero_found_right = np.sum(right_lane_inds)
             non_zero_found_pct = (non_zero_found_left + non_zero_found_right) / total_non_zeros
             print("[Previous lane] Found pct={0}".format(non_zero_found_pct))
-            #print(left_lane_inds)
-        
-        if non_zero_found_pct < 0.85:
+        if non_zero_found_pct < 0.8:
+            histogram = np.sum(warped_img[warped_img.shape[0]*2//3:,:], axis=0)
+            # histogram = histogram * self.parabola
+            midpoint = self.UNWARPED_SIZE[0]//2
+            leftx_base = midpoint-self.ub + self.detect_lane_start(warped_img[:,midpoint-self.ub :midpoint-self.lb])
+            rightx_base = midpoint+self.lb + self.detect_lane_start(warped_img[:,midpoint+self.lb :midpoint+self.ub])
+
+            # leftx_base = midpoint-ub+ np.argmax(histogram[midpoint-ub :midpoint-lb])
+            # rightx_base = midpoint+lb + np.argmax(histogram[midpoint+lb:midpoint+ub])  
+    
+            leftx_current = leftx_base
+            rightx_current = rightx_base 
             print("Non zeros found below thresholds, begining sliding window - pct={0}".format(non_zero_found_pct))
             left_lane_inds = []
             right_lane_inds = []
@@ -612,6 +615,8 @@ class LANE_DETECTION:
             right_centers = []
             left_center_idx = []
             right_center_idx =[]
+            doleft = True
+            doright = True
             # Step through the windows one by one
             for window in range(self.windows_per_line):
                 # Identify window boundaries in x and y (and right and left)
@@ -623,93 +628,102 @@ class LANE_DETECTION:
                 # Notice that the window's width is twice the margin
                 win_xleft_low = leftx_current - margin
                 win_xleft_high = leftx_current + margin
+                if (win_xleft_low > 0) & (win_xleft_high < warped_img.shape[1]) & doleft:
+                    left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
+                    good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+                                (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
+                    if len(good_left_inds) > minpix:
+                        leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+                        left_lane_inds.append(good_left_inds)
+                        left_centers.append(leftx_current)
+                        left_center_idx.append(window)
+                    elif len(left_center_idx) > 3 :
+                        left_coef = np.polyfit(np.array(left_center_idx),np.array(left_centers),2)
+                        leftx_current = int(np.polyval(left_coef, window+1))
+                else :
+                    doleft = False
+
                 win_xright_low = rightx_current - margin
                 win_xright_high = rightx_current + margin
+                if (win_xright_high > 0 )& (win_xright_low < warped_img.shape[1]) & doright:
+                    right_line.windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])            
+                    good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+                        (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
+                    if len(good_right_inds) > minpix:        
+                        rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+                        right_lane_inds.append(good_right_inds)
+                        right_centers.append(rightx_current)
+                        right_center_idx.append(window)
+                    elif len(right_center_idx) > 3 :
+                        right_coef = np.polyfit(np.array(right_center_idx),np.array(right_centers),2)
+                        rightx_current = int(np.polyval(right_coef, window+1))
+                else :
+                    doright = False
 
-                left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
-                right_line.windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])
-
-                # Super crytic and hard to understand...
-                # Basically nonzerox and nonzeroy have the same size and any nonzero pixel is identified by
-                # (nonzeroy[i],nonzerox[i]), therefore we just return the i indices within the window that are nonzero
-                # and can then index into nonzeroy and nonzerox to find the ACTUAL pixel coordinates that are not zero
-                good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
-                (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
-                good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
-                (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
-                            
-                # Append these indices to the lists
-                
-                
-                # gap =  rightx_current - leftx_current
-                # If you found > minpix pixels, recenter next window on their mean position
-                if len(good_left_inds) > minpix:
-                    leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
-                    left_lane_inds.append(good_left_inds)
-                    left_centers.append(leftx_current)
-                    left_center_idx.append(window)
-                elif len(left_center_idx) > 3 :
-                    left_coef = np.polyfit(np.array(left_center_idx),np.array(left_centers),2)
-                    leftx_current = int(np.polyval(left_coef, window+1))
-                if len(good_right_inds) > minpix:        
-                    rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
-                    right_lane_inds.append(good_right_inds)
-                    right_centers.append(rightx_current)
-                    right_center_idx.append(window)
-                elif len(right_center_idx) > 3 :
-                    right_coef = np.polyfit(np.array(right_center_idx),np.array(right_centers),2)
-                    rightx_current = int(np.polyval(right_coef, window+1))
-                # if len(good_left_inds) - len(good_right_inds) :
-                #     rightx_current = leftx_current + gap
-                # else:
-                #     leftx_current = rightx_current - gap
                 margin =  int(margin * self.margin_red)
-            # Concatenate the arrays of indices since we now have a list of multiple arrays (e.g. ([1,3,6],[8,5,2]))
-            # We want to create a single array with elements from all those lists (e.g. [1,3,6,8,5,2])
-            # These are the indices that are non zero in our sliding windows
-            left_lane_inds = np.concatenate(left_lane_inds)
-            right_lane_inds = np.concatenate(right_lane_inds)
+            if len(left_lane_inds)>0:
+                left_lane_inds = np.concatenate(left_lane_inds)
+            if len(right_lane_inds)>0:
+                right_lane_inds = np.concatenate(right_lane_inds)
             
             non_zero_found_left = np.sum(left_lane_inds)
             non_zero_found_right = np.sum(right_lane_inds)
             non_zero_found_pct = (non_zero_found_left + non_zero_found_right) / total_non_zeros
-            print("[Sliding windows] Found pct={0}".format(non_zero_found_pct))
-            
-    
-        # Extract left and right line pixel positions
-        leftx = nonzerox[left_lane_inds]
-        lefty = nonzeroy[left_lane_inds] 
-        rightx = nonzerox[right_lane_inds]
-        righty = nonzeroy[right_lane_inds] 
-        
-        #print("[LEFT] Number of hot pixels={0}".format(len(leftx)))
-        #print("[RIGHT] Number of hot pixels={0}".format(len(rightx)))
-        # Fit a second order polynomial to each
-        left_fit = np.polyfit(lefty, leftx, 2)
-        right_fit = np.polyfit(righty, rightx, 2)
-        #print("Poly left {0}".format(left_fit))
-        #print("Poly right {0}".format(right_fit))
-        left_line.polynomial_coeff = left_fit
-        right_line.polynomial_coeff = right_fit
-        
-        if not self.previous_left_lane_lines.append(left_line):
+            # print("[Sliding windows] Found pct={0}".format(non_zero_found_pct))
+        else :
+            x =  np.arange(len(right_lane_inds))
+            right_lane_inds  =  x[right_lane_inds]
+            x = np.arange(len(left_lane_inds))
+            left_lane_inds = x[left_lane_inds]    
+        if len(left_lane_inds)>0:
+            leftx = nonzerox[left_lane_inds]
+            lefty = nonzeroy[left_lane_inds] 
+            left_fit = np.polyfit(lefty, leftx, 2)
+            left_line.polynomial_coeff = left_fit
+            if not self.previous_left_lane_lines.append(left_line):
+                left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
+                left_line.polynomial_coeff = left_fit
+                # self.previous_left_lane_lines.append(left_line, force=True)
+                # print("**** REVISED Poly left {0}".format(left_fit))  
+            else:
+                left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
+                left_line.polynomial_coeff = left_fit  
+                leftx =[]
+                lefty =[]        
+        else:
             left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
             left_line.polynomial_coeff = left_fit
-            self.previous_left_lane_lines.append(left_line, force=True)
-            print("**** REVISED Poly left {0}".format(left_fit))            
-        #else:
-            #left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
-            #left_line.polynomial_coeff = left_fit
-
-
-        if not self.previous_right_lane_lines.append(right_line):
+            leftx =[]
+            lefty =[] 
+        
+        if len(right_lane_inds)>0:
+            rightx = nonzerox[right_lane_inds]
+            righty = nonzeroy[right_lane_inds] 
+            right_fit = np.polyfit(righty, rightx, 2)
+            right_line.polynomial_coeff = right_fit
+            if not self.previous_right_lane_lines.append(right_line):
+                right_fit = self.previous_right_lane_lines.get_smoothed_polynomial()
+                right_line.polynomial_coeff = right_fit
+                # self.previous_right_lane_lines.append(right_line, force=True)
+                # print("**** REVISED Poly right {0}".format(right_fit))
+            else:
+                right_fit = self.previous_right_lane_lines.get_smoothed_polynomial()
+                right_line.polynomial_coeff = right_fit
+                rightx = []
+                righty = []
+        else:
             right_fit = self.previous_right_lane_lines.get_smoothed_polynomial()
             right_line.polynomial_coeff = right_fit
-            self.previous_right_lane_lines.append(right_line, force=True)
-            print("**** REVISED Poly right {0}".format(right_fit))
-        #else:
-            #right_fit = self.previous_right_lane_lines.get_smoothed_polynomial()
-            #right_line.polynomial_coeff = right_fit
+            rightx = []
+            righty = []
+
+        
+        
+        
+        
+
+
+        
 
 
     
@@ -734,16 +748,33 @@ class LANE_DETECTION:
         return (left_line, right_line)
 
 if __name__ == "__main__":
-    img =  cv2.imread("./images/straight_lines1.jpg")
-    (bottom_px, right_px) = (img.shape[0] - 1, img.shape[1] - 1) 
-    pts = np.array([[210,bottom_px],[595,450],[690,450], [1110, bottom_px]], np.int32)
-    src_pts = pts.astype(np.float32)
-    dst_pts = np.array([[200, bottom_px], [200, 0], [1000, 0], [1000, bottom_px]], np.float32)
-    print(src_pts,dst_pts)
-    ld = LANE_DETECTION( img)
-    image =  cv2.imread("./images/test5.jpg")
-    center =  (image.shape[1]//4,image.shape[0]-100 )
-    cv2.circle(image,center,20, (66, 244, 238),-1)
+    # img =  cv2.imread("./images/straight_lines1.jpg")
+    # ld = LANE_DETECTION( img)
+    # image =  cv2.imread("./images/test5.jpg")
+    # center =  (image.shape[1]//4,image.shape[0]-100 )
+    # cv2.circle(image,center,20, (66, 244, 238),-1)
+    # proc_img = ld.process_image(image)
+    # cv2.imwrite("./images/detection/frame.jpg",proc_img)
+
+    video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
+    fps =  video_reader.get(cv2.CAP_PROP_FPS)
+    nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_out = "videos/output10.mov"
+    # cv2.VideoWriter_fourcc(*'MPEG')
+    video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
+    pers_frame_time = 7# seconds
+    pers_frame = int(pers_frame_time *fps)
+    video_reader.set(1,pers_frame)
+    ret, image = video_reader.read()
+    ld = LANE_DETECTION( image)
+    pers_frame_time = 1# seconds
+    pers_frame = int(pers_frame_time *fps)
+    video_reader.set(1,pers_frame)
+    ret, image = video_reader.read()
     proc_img = ld.process_image(image)
     cv2.imwrite("./images/detection/frame.jpg",proc_img)
+
+
 
