@@ -181,7 +181,7 @@ class FRAME :
             status = "right"
         elif right>0 and left >0 :
             status = "left"
-        print(box._id,status, left, right)
+        # print(box._id,status, left, right)
         return status
 
     def calculate_position(self, box: BoundBox):
@@ -196,9 +196,9 @@ class FRAME :
     
     def process_and_plot(self,image):
         lane_img = self.lane.process_image( image)
-        self.update_trackers(image)
-        if self.count > 1 :
-            lane_img = self.draw_lane_weighted(lane_img)
+        # self.update_trackers(image)
+        # if self.count > 1 :
+        #     lane_img = self.draw_lane_weighted(lane_img)
         return lane_img
 
     @staticmethod
@@ -341,19 +341,28 @@ class FRAME :
         return
         
 if __name__ == "__main__":
-    import os
-    files =  os.listdir("./images/from_video/")
-    files  = [f for f in files if f[-3:]=="jpg"]
-    files.sort()
-    # files =["test1.jpg","test4.jpg","test6.jpg","test5.jpg",]
+    from tqdm import tqdm
+    video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
+    fps =  video_reader.get(cv2.CAP_PROP_FPS)
+    nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_out = "videos/output10.mov"
+    # cv2.VideoWriter_fourcc(*'MPEG')
+    video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
+    pers_frame_time = 7# seconds
+    pers_frame = int(pers_frame_time *fps)
+    video_reader.set(1,pers_frame)
+    ret, image = video_reader.read()
+    frame = FRAME(image=image)
+    video_reader.set(1,0*fps)
+    for i in tqdm(range(300)):
+        status, image = video_reader.read()
+        if  status :
+            procs_img = frame.process_and_plot(image)
+            video_writer.write(procs_img) 
+    video_reader.release()
+    video_writer.release() 
+    cv2.destroyAllWindows()
 
-    frame  = FRAME( image=cv2.imread("./images/from_video/"+files[-1]))
-    # frame.find_lane(cv2.imread("./images/from_video/"+files[0]), plot=True)
-    # frame.detect_objects(cv2.imread("./images/"+files[0]))
-    for i, f in enumerate(files[0:72]):
-        # frame.find_lane(cv2.imread("./images/"+f),plot=True)
-       image = frame.process_and_plot(cv2.imread("./images/from_video/"+f))
-       cv2.imwrite("./images/detection/detect.jpg", image)
-       input("Press Enter to continue...")
-    
 
