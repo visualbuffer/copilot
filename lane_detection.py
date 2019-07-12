@@ -202,7 +202,7 @@ class LANE_DETECTION:
         x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
         self.parabola = -5*x*(x+self.lb -self.ub)
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=int(self.window_half_width*0.6)
+        self.sliding_window_recenter_thres=10#int(self.window_half_width*0.4)
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -213,16 +213,16 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-        self.margin_red = 0.95
+        self.margin_red = 1
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]*2//3],
-                    [0, self.img_dimensions[0]],
-                    [self.img_dimensions[1],self.img_dimensions[0]],
-                    [self.img_dimensions[1], self.img_dimensions[0]*2//3],
-                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
-                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
+        roi_points = np.array([[0, self.img_dimensions[0]*12//13],
+                    # [0, self.img_dimensions[0]],
+                    # [self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1], self.img_dimensions[0]*12//13],
+                    [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
+                    [self.img_dimensions[1]*11//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
         grad= np.tile(5*x,self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
@@ -235,16 +235,17 @@ class LANE_DETECTION:
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
 
-        # cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
-        # cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
+        cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
+        cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
 
-        lines = cv2.HoughLinesP(edges*roi,rho = 5,theta = np.pi/180,threshold = 20,minLineLength = 150,maxLineGap = 20)
+        lines = cv2.HoughLinesP(edges*roi,rho =19,theta = 3* np.pi/180,threshold = 7,minLineLength = 240,maxLineGap = 25)
 
-       
+        img2 =  self.image.copy()
         # print(lines)
         for line in lines:
-            
+           
             for x1, y1, x2, y2 in line:
+                cv2.line(img2,(x1,y1),(x2,y2),(255,0,0),2)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
                 normal /=np.linalg.norm(normal)
                 point = np.array([[x1],[y1]], dtype=np.float32)
@@ -315,6 +316,7 @@ class LANE_DETECTION:
             cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
             cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
             cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
+            cv2.imwrite(self.temp_dir+"perspective3.jpg",img2)
             return img_orig
         return
         
@@ -756,7 +758,7 @@ if __name__ == "__main__":
     # proc_img = ld.process_image(image)
     # cv2.imwrite("./images/detection/frame.jpg",proc_img)
 
-    video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
+    video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -764,7 +766,7 @@ if __name__ == "__main__":
     video_out = "videos/output10.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 7# seconds
+    pers_frame_time = 0.1# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
