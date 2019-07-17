@@ -6,6 +6,7 @@ logs/
 *_test.py
 yolov3.weights
 *.h5
+*.mov
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
