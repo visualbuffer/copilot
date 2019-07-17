@@ -182,7 +182,7 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 20
+    windows_per_line = 30
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
@@ -196,13 +196,13 @@ class LANE_DETECTION:
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
         self.calc_perspective()
         
-        self.window_half_width = int(self.img_dimensions[1]*0.06)
-        self.lb = int(0.20*self.img_dimensions[1])
-        self.ub = int(0.35*self.img_dimensions[1])
+        self.window_half_width = int(self.img_dimensions[1]*0.05)
+        self.lb = int(0.15*self.img_dimensions[1])
+        self.ub = int(0.27*self.img_dimensions[1])
         x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
-        self.parabola = -5*x*(x+self.lb -self.ub)
+        self.parabola = -200*x*(x+0.6*self.lb -0.6*self.ub)
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=10#int(self.window_half_width*0.4)
+        self.sliding_window_recenter_thres=7#int(self.window_half_width*0.4)
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -213,7 +213,7 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-        self.margin_red = 1
+        self.margin_red = .95
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
@@ -542,14 +542,14 @@ class LANE_DETECTION:
         histx =   np.sum(image[image.shape[0]*2//3:,:], axis=0)
         histx = histx * self.parabola
 
-        # fig, ax = plt.subplots(1, 3, figsize=(15,4))
-        # ax[0].imshow(image, cmap='gray')
-        # ax[0].axis("off")
-        # ax[0].set_title("Binary Thresholded Perspective Transform Image")
+        fig, ax = plt.subplots(1, 3, figsize=(15,4))
+        ax[0].imshow(image, cmap='gray')
+        ax[0].axis("off")
+        ax[0].set_title("Binary Thresholded Perspective Transform Image")
 
-        # ax[1].plot(histogram)
-        # ax[2].plot(histx)
-        # plt.show()
+        ax[1].plot(histx)
+        ax[2].plot(histx)
+        plt.show()
         return np.argmax(histx)
     
         
