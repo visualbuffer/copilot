@@ -4,7 +4,6 @@ import math
 from datetime import datetime
 from matplotlib import pyplot as plt
 from collections import deque
-from scipy.stats  import mode
 temp_dir = "images/detection/detect.jpg"
 def compute_hls_white_yellow_binary(image,kernel_size =3):
     """
@@ -29,86 +28,86 @@ def compute_hls_white_yellow_binary(image,kernel_size =3):
     # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=mask))
     return mask
 
-def mag_sobel(gray_img, kernel_size=3, thres=(0, 255)):
-    """
-    Computes sobel matrix in both x and y directions, merges them by computing the magnitude in both directions
-    and applies a threshold value to only set pixels within the specified range
-    """
-    sx = cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size)
-    sy = cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size)
+# def mag_sobel(gray_img, kernel_size=3, thres=(0, 255)):
+#     """
+#     Computes sobel matrix in both x and y directions, merges them by computing the magnitude in both directions
+#     and applies a threshold value to only set pixels within the specified range
+#     """
+#     sx = cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size)
+#     sy = cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size)
     
-    sxy = np.sqrt(np.square(sx) + np.square(sy))
-    scaled_sxy = np.uint8(255 * sxy / np.max(sxy))
+#     sxy = np.sqrt(np.square(sx) + np.square(sy))
+#     scaled_sxy = np.uint8(255 * sxy / np.max(sxy))
     
-    sxy_binary = np.zeros_like(scaled_sxy)
-    sxy_binary[(scaled_sxy >= thres[0]) & (scaled_sxy <= thres[1])] = 1
+#     sxy_binary = np.zeros_like(scaled_sxy)
+#     sxy_binary[(scaled_sxy >= thres[0]) & (scaled_sxy <= thres[1])] = 1
     
-    return sxy_binary
+#     return sxy_binary
 
-def dir_sobel(gray_img, kernel_size=3, thres=(0, np.pi/2)):
-    """
-    Computes sobel matrix in both x and y directions, gets their absolute values to find the direction of the gradient
-    and applies a threshold value to only set pixels within the specified range
-    """
-    sx_abs = np.absolute(cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size))
-    sy_abs = np.absolute(cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size))
+# def dir_sobel(gray_img, kernel_size=3, thres=(0, np.pi/2)):
+#     """
+#     Computes sobel matrix in both x and y directions, gets their absolute values to find the direction of the gradient
+#     and applies a threshold value to only set pixels within the specified range
+#     """
+#     sx_abs = np.absolute(cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size))
+#     sy_abs = np.absolute(cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size))
     
-    dir_sxy = np.arctan2(sx_abs, sy_abs)
+#     dir_sxy = np.arctan2(sx_abs, sy_abs)
 
-    binary_output = np.zeros_like(dir_sxy)
-    binary_output[(dir_sxy >= thres[0]) & (dir_sxy <= thres[1])] = 1
+#     binary_output = np.zeros_like(dir_sxy)
+#     binary_output[(dir_sxy >= thres[0]) & (dir_sxy <= thres[1])] = 1
     
-    return binary_output
-
-
-def combined_sobels(sx_binary, sy_binary, sxy_magnitude_binary, gray_img, kernel_size=3, angle_thres=(0, np.pi/2)):
-    sxy_direction_binary = dir_sobel(gray_img, kernel_size=kernel_size, thres=angle_thres)
-    
-    combined = np.zeros_like(sxy_direction_binary)
-    # Sobel X returned the best output so we keep all of its results. We perform a binary and on all the other sobels    
-    combined[(sx_binary == 1) | ((sy_binary == 1) & (sxy_magnitude_binary == 1) & (sxy_direction_binary == 1))] = 1
-    
-    return combined
-
-def abs_sobel(gray_img, x_dir=True, kernel_size=3, thres=(0, 255)):
-    """
-    Applies the sobel operator to a grayscale-like (i.e. single channel) image in either horizontal or vertical direction
-    The function also computes the asbolute value of the resulting matrix and applies a binary threshold
-    """
-    sobel = cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size) if x_dir else cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size) 
-    sobel_abs = np.absolute(sobel)
-    sobel_scaled = np.uint8(255 * sobel / np.max(sobel_abs))
-    
-    gradient_mask = np.zeros_like(sobel_scaled)
-    gradient_mask[(thres[0] <= sobel_scaled) & (sobel_scaled <= thres[1])] = 1
-    return gradient_mask
-
-def get_combined_binary_thresholded_img(undist_img):
-    """
-    Applies a combination of binary Sobel and color thresholding to an undistorted image
-    Those binary images are then combined to produce the returned binary image
-    """
-    undist_img_gray = cv2.cvtColor(undist_img, cv2.COLOR_RGB2LAB  )[:,:,0]
-    
-
-    sx = abs_sobel(undist_img_gray, kernel_size=15, thres=(20, 120))
-    sy = abs_sobel(undist_img_gray, x_dir=False, kernel_size=15, thres=(20, 120))
-    sxy = mag_sobel(undist_img_gray, kernel_size=15, thres=(80, 200))
-    sxy_combined_dir = combined_sobels(sx, sy, sxy, undist_img_gray, kernel_size=15, angle_thres=(np.pi/4, np.pi/2))   
-    
-    hls_w_y_thres = compute_hls_white_yellow_binary(undist_img)
-    combined_binary = np.zeros_like(hls_w_y_thres)
-    combined_binary[(sxy_combined_dir == 1) | (hls_w_y_thres == 1)] = 1
+#     return binary_output
 
 
-    cv2.imwrite(temp_dir, sx*150)
-    cv2.imwrite(temp_dir, sy*150)
-    cv2.imwrite(temp_dir, sxy*150)
-    cv2.imwrite(temp_dir, sxy_combined_dir*150)
-    cv2.imwrite(temp_dir, hls_w_y_thres*150)
-    cv2.imwrite(temp_dir, combined_binary*150)
+# def combined_sobels(sx_binary, sy_binary, sxy_magnitude_binary, gray_img, kernel_size=3, angle_thres=(0, np.pi/2)):
+#     sxy_direction_binary = dir_sobel(gray_img, kernel_size=kernel_size, thres=angle_thres)
+    
+#     combined = np.zeros_like(sxy_direction_binary)
+#     # Sobel X returned the best output so we keep all of its results. We perform a binary and on all the other sobels    
+#     combined[(sx_binary == 1) | ((sy_binary == 1) & (sxy_magnitude_binary == 1) & (sxy_direction_binary == 1))] = 1
+    
+#     return combined
+
+# def abs_sobel(gray_img, x_dir=True, kernel_size=3, thres=(0, 255)):
+#     """
+#     Applies the sobel operator to a grayscale-like (i.e. single channel) image in either horizontal or vertical direction
+#     The function also computes the asbolute value of the resulting matrix and applies a binary threshold
+#     """
+#     sobel = cv2.Sobel(gray_img, cv2.CV_64F, 1, 0, ksize=kernel_size) if x_dir else cv2.Sobel(gray_img, cv2.CV_64F, 0, 1, ksize=kernel_size) 
+#     sobel_abs = np.absolute(sobel)
+#     sobel_scaled = np.uint8(255 * sobel / np.max(sobel_abs))
+    
+#     gradient_mask = np.zeros_like(sobel_scaled)
+#     gradient_mask[(thres[0] <= sobel_scaled) & (sobel_scaled <= thres[1])] = 1
+#     return gradient_mask
+
+# def get_combined_binary_thresholded_img(undist_img):
+#     """
+#     Applies a combination of binary Sobel and color thresholding to an undistorted image
+#     Those binary images are then combined to produce the returned binary image
+#     """
+#     undist_img_gray = cv2.cvtColor(undist_img, cv2.COLOR_RGB2LAB  )[:,:,0]
+    
+
+#     sx = abs_sobel(undist_img_gray, kernel_size=15, thres=(20, 120))
+#     sy = abs_sobel(undist_img_gray, x_dir=False, kernel_size=15, thres=(20, 120))
+#     sxy = mag_sobel(undist_img_gray, kernel_size=15, thres=(80, 200))
+#     sxy_combined_dir = combined_sobels(sx, sy, sxy, undist_img_gray, kernel_size=15, angle_thres=(np.pi/4, np.pi/2))   
+    
+#     hls_w_y_thres = compute_hls_white_yellow_binary(undist_img)
+#     combined_binary = np.zeros_like(hls_w_y_thres)
+#     combined_binary[(sxy_combined_dir == 1) | (hls_w_y_thres == 1)] = 1
+
+
+#     cv2.imwrite(temp_dir, sx*150)
+#     cv2.imwrite(temp_dir, sy*150)
+#     cv2.imwrite(temp_dir, sxy*150)
+#     cv2.imwrite(temp_dir, sxy_combined_dir*150)
+#     cv2.imwrite(temp_dir, hls_w_y_thres*150)
+#     cv2.imwrite(temp_dir, combined_binary*150)
             
-    return combined_binary
+#     return combined_binary
 
 
 def create_queue(length = 10):
@@ -183,7 +182,7 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 27
+    windows_per_line = 15
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
@@ -198,12 +197,12 @@ class LANE_DETECTION:
         self.calc_perspective()
         
         self.window_half_width = int(self.img_dimensions[1]*0.06)
-        self.lb = int(0.15*self.img_dimensions[1])
-        self.ub = int(0.27*self.img_dimensions[1])
+        self.lb = int(0.20*self.img_dimensions[1])
+        self.ub = int(0.35*self.img_dimensions[1])
         x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
-        self.parabola = -200*x*(x+0.6*self.lb -0.6*self.ub)
+        self.parabola = -5*x*(x+self.lb -self.ub)
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=4#int(self.window_half_width*0.4)
+        self.sliding_window_recenter_thres=int(self.window_half_width*0.1)
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -214,16 +213,16 @@ class LANE_DETECTION:
         self.previous_left_lane_lines = LANE_HISTORY()
         self.previous_right_lane_lines = LANE_HISTORY()
         self.total_img_count = 0
-        self.margin_red = .9995
+        self.margin_red = 0.995
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]*12//13],
-                    # [0, self.img_dimensions[0]],
-                    # [self.img_dimensions[1],self.img_dimensions[0]],
-                    [self.img_dimensions[1], self.img_dimensions[0]*12//13],
-                    [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
-                    [self.img_dimensions[1]*11//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
+        roi_points = np.array([[0, self.img_dimensions[0]*2//3],
+                    [0, self.img_dimensions[0]],
+                    [self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1], self.img_dimensions[0]*2//3],
+                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
+                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
         grad= np.tile(5*x,self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
@@ -236,17 +235,16 @@ class LANE_DETECTION:
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
 
-        cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
-        cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
+        # cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
+        # cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
 
-        lines = cv2.HoughLinesP(edges*roi,rho =19,theta = 3* np.pi/180,threshold = 7,minLineLength = 240,maxLineGap = 25)
+        lines = cv2.HoughLinesP(edges*roi,rho = 5,theta = np.pi/180,threshold = 20,minLineLength = 150,maxLineGap = 20)
 
-        img2 =  self.image.copy()
+       
         # print(lines)
         for line in lines:
-           
+            
             for x1, y1, x2, y2 in line:
-                cv2.line(img2,(x1,y1),(x2,y2),(255,0,0),2)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
                 normal /=np.linalg.norm(normal)
                 point = np.array([[x1],[y1]], dtype=np.float32)
@@ -317,7 +315,6 @@ class LANE_DETECTION:
             cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
             cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
             cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
-            cv2.imwrite(self.temp_dir+"perspective3.jpg",img2)
             return img_orig
         return
         
@@ -548,7 +545,7 @@ class LANE_DETECTION:
         # ax[0].axis("off")
         # ax[0].set_title("Binary Thresholded Perspective Transform Image")
 
-        # ax[1].plot(histx)
+        # ax[1].plot(histogram)
         # ax[2].plot(histx)
         # plt.show()
         return np.argmax(histx)
@@ -636,7 +633,7 @@ class LANE_DETECTION:
                     good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
                                 (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
                     if len(good_left_inds) > minpix:
-                        leftx_current = np.int(mode(nonzerox[good_left_inds])[0])
+                        leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
                         left_lane_inds.append(good_left_inds)
                         left_centers.append(leftx_current)
                         left_center_idx.append(window)
@@ -653,7 +650,7 @@ class LANE_DETECTION:
                     good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
                         (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
                     if len(good_right_inds) > minpix:        
-                        rightx_current = np.int(mode(nonzerox[good_right_inds])[0])
+                        rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
                         right_lane_inds.append(good_right_inds)
                         right_centers.append(rightx_current)
                         right_center_idx.append(window)
