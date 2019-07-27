@@ -11,21 +11,15 @@ def compute_hls_white_yellow_binary(image,kernel_size =3):
     The provided image should be in RGB formats
     """
     converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
-    # converted = cv2.GaussianBlur(converted, (kernel_size, kernel_size), 0)
-    # yellow color mask  
-    lower = np.uint8([ 20,   0, 100])
-    upper = np.uint8([ 35, 255, 255])
+    lower = np.uint8([  17, 0,   40])
+    upper = np.uint8([35, 255, 255])
     yellow_mask = cv2.inRange(converted, lower, upper)
-    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=yellow_mask))
-   
-    # white color mask
-    lower = np.uint8([  0, 190,   0])
-    upper = np.uint8([180, 255, 85])
+
+    lower = np.uint8([  0, 210,   0])
+    upper = np.uint8([180, 255, 70])
     white_mask = cv2.inRange(converted, lower, upper)
-    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=white_mask))
-     # combine the mask
+
     mask = cv2.bitwise_or(white_mask, yellow_mask)
-    # cv2.imwrite(temp_dir, cv2.bitwise_and(image,image,mask=mask))
     return mask
 
 # def mag_sobel(gray_img, kernel_size=3, thres=(0, 255)):
@@ -182,7 +176,7 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 15
+    windows_per_line = 27
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     def __init__(self,  img ):
@@ -196,13 +190,13 @@ class LANE_DETECTION:
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
         self.calc_perspective()
         
-        self.window_half_width = int(self.img_dimensions[1]*0.06)
+        self.window_half_width = int(self.img_dimensions[1]*0.09)
         self.lb = int(0.20*self.img_dimensions[1])
         self.ub = int(0.35*self.img_dimensions[1])
         x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
         self.parabola = -5*x*(x+self.lb -self.ub)
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=int(self.window_half_width*0.1)
+        self.sliding_window_recenter_thres=4
         # LANE PROPERTIES
         # We can pre-compute some data here
         # self.ym_per_px = self.real_world_lane_size_meters[0] / self.img_dimensions[0]
@@ -217,12 +211,12 @@ class LANE_DETECTION:
         
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]*2//3],
-                    [0, self.img_dimensions[0]],
-                    [self.img_dimensions[1],self.img_dimensions[0]],
-                    [self.img_dimensions[1], self.img_dimensions[0]*2//3],
-                    [self.img_dimensions[1]*7//11,self.img_dimensions[0]//2],
-                    [self.img_dimensions[1]*5//11,self.img_dimensions[0]//2]], dtype=np.int32)
+        roi_points = np.array([[0, self.img_dimensions[0]*12//13],
+                    # [0, self.img_dimensions[0]],
+                    # [self.img_dimensions[1],self.img_dimensions[0]],
+                    [self.img_dimensions[1], self.img_dimensions[0]*12//13],
+                    [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
+                    [self.img_dimensions[1]*11//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
         grad= np.tile(5*x,self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
@@ -235,16 +229,17 @@ class LANE_DETECTION:
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
         # edges = cv2.Canny(grey[:, :, 1], 500, 400)
 
-        # cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
-        # cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
+        cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
+        cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
 
-        lines = cv2.HoughLinesP(edges*roi,rho = 5,theta = np.pi/180,threshold = 20,minLineLength = 150,maxLineGap = 20)
+        lines = cv2.HoughLinesP(edges*roi,rho =19,theta = 3* np.pi/180,threshold = 7,minLineLength = 240,maxLineGap = 25)
 
-       
+        img2 =  self.image.copy()
         # print(lines)
         for line in lines:
-            
+           
             for x1, y1, x2, y2 in line:
+                cv2.line(img2,(x1,y1),(x2,y2),(255,0,0),2)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
                 normal /=np.linalg.norm(normal)
                 point = np.array([[x1],[y1]], dtype=np.float32)
@@ -315,6 +310,7 @@ class LANE_DETECTION:
             cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
             cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
             cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
+            cv2.imwrite(self.temp_dir+"perspective3.jpg",img2)
             return img_orig
         return
         

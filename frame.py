@@ -2,6 +2,7 @@ from camera import CAMERA
 from yolo_model import BoundBox,  YOLO 
 from utils.bbox import bbox_iou 
 from lane_detection import LANE_DETECTION
+# from lane_finder import LANE_DETECTION
 import numpy as np
 import cv2
 from datetime import datetime
@@ -342,25 +343,29 @@ class FRAME :
         
 if __name__ == "__main__":
     from tqdm import tqdm
-    video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
+    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
+    video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output11.mov"
+    video_out = "videos/output20.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 0.1# seconds
+    pers_frame_time = 14# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
     frame = FRAME(image=image)
     video_reader.set(1,0*fps)
-    for i in tqdm(range(30)):
+    for i in tqdm(range(nb_frames)):
         status, image = video_reader.read()
         if  status :
-            procs_img = frame.process_and_plot(image)
-            video_writer.write(procs_img) 
+            try : 
+                procs_img = frame.process_and_plot(image)
+                video_writer.write(procs_img) 
+            except :
+                print("GOT EXEPTION TO PROCES THE IMAGE")
     video_reader.release()
     video_writer.release() 
     cv2.destroyAllWindows()
