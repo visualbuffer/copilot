@@ -137,6 +137,7 @@ class FRAME :
 
     def __init__(self, **kwargs):
         # calc pers => detect cars and dist > detect lanes
+        self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.__dict__.update(self._defaults) # set up default values
         self.__dict__.update(kwargs) # and update with user overrides
         self.speed =  self.get_speed()
@@ -144,6 +145,7 @@ class FRAME :
         self.image : np.ndarray
         if  self.image.size ==0 :
             raise ValueError("No Image") 
+        self.font_sz = 4e-4 * self.image.shape[0]
         self.lane = LANE_DETECTION(self.image)
         self.temp_dir = './images/detection/'
         self.perspective_done_at = datetime.utcnow().timestamp()
@@ -197,9 +199,9 @@ class FRAME :
     
     def process_and_plot(self,image):
         lane_img = self.lane.process_image( image)
-        # self.update_trackers(image)
-        # if self.count > 1 :
-        #     lane_img = self.draw_lane_weighted(lane_img)
+        self.update_trackers(image)
+        if self.count > 1 :
+            lane_img = self.draw_lane_weighted(lane_img)
         return lane_img
 
     @staticmethod
@@ -288,30 +290,26 @@ class FRAME :
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
 
 
-    @staticmethod
-    def put_text(overlay,text, coord, color=WHITE):
-        ft_sz = 5e-4 * overlay.shape[0]
-        sz = ft_sz*25
-        font =  cv2.FONT_HERSHEY_SIMPLEX
+
+    def put_text(self, overlay,text, coord, color=WHITE):
+        sz = self.font_sz*25
         rect_ht = int(sz *1.2)
         rect_wd = int(len(text)*sz*0.8)
         p1 = (coord[0], coord[1])
         p2 = (coord[0]+rect_wd, coord[1]-rect_ht)
         cv2.rectangle(overlay, p1, p2,  (0, 0, 0),-1)
-        # cv2.putText(overlay, text,   coord,  font, ft_sz, (0, 0, 0), 5)
-        cv2.putText(overlay, text,   coord,  font, ft_sz, color, 1)
+        cv2.putText(overlay, text,   coord,  self.font, self.font_sz, color, 1, cv2.LINE_AA)
 
         return 
 
     def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.8, gamma=0):
         overlay = image.copy()
-        font =  cv2.FONT_HERSHEY_COMPLEX_SMALL
         for i , box in enumerate(self.obstacles):
             past=[box.xmin,box.ymin,box.xmax,box.ymax]
 
             t1 = classes[obstructions[box.label]] +" ["+str(int(box.position[1])) + "m]" 
             t2 = "("+str(int(box.score*100))+"%) ID: " +str(box._id)
-            b1= "Lane "+ box.lane
+            b1= box.lane + "Lane"
             b2 = str(int(box.velocity[1]))+"m/s"
             b3 = "Col "+str(int(box.col_time))+"s"
             pt1 = (box.xmin, box.ymin-10)
@@ -358,7 +356,7 @@ if __name__ == "__main__":
     ret, image = video_reader.read()
     frame = FRAME(image=image)
     video_reader.set(1,0*fps)
-    for i in tqdm(range(nb_frames)):
+    for i in tqdm(range(nb_frames//5)):
         status, image = video_reader.read()
         if  status :
             try : 
