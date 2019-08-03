@@ -12,8 +12,8 @@ def compute_hls_white_yellow_binary(image,kernel_size =3):
     The provided image should be in RGB formats
     """
     converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
-    lower = np.uint8([  20, 50,   40])
-    upper = np.uint8([32, 255, 255])
+    lower = np.uint8([ 20, 50,   40])
+    upper = np.uint8([35, 255, 255])
     yellow_mask = cv2.inRange(converted, lower, upper)   
     lower = np.uint8([ 100, 200,   0])
     upper = np.uint8([180, 255, 80])
@@ -48,7 +48,7 @@ class LANE_LINE:
 
 
 class LANE_HISTORY:
-    def __init__(self, queue_depth=10, test_points=[300, 500, 700], poly_max_deviation_distance=100, smoothing = 5):
+    def __init__(self, queue_depth=12, test_points=[300, 500, 700], poly_max_deviation_distance=100, smoothing = 10):
         self.lane_lines = create_queue(queue_depth)
         self.smoothed_poly = None
         self.test_points = test_points
@@ -58,10 +58,10 @@ class LANE_HISTORY:
         self.max_lost_count = queue_depth
         self.smoothing =  smoothing
     
-    def append(self, lane_line, force=False):
-        if len(self.lane_lines) == 0 or (self.lost_count > self.max_lost_count ) or force:
+    def addlane(self, lane_line, skip=True):
+        if (not skip) and (len(self.lane_lines) == 0 or (self.lost_count > self.max_lost_count )) :
             self.lane_lines = create_queue(self.max_lost_count)
-            self.smoothed_poly = None
+ 
             self.lane_lines.append(lane_line)
             self.get_smoothed_polynomial()
             self.lost =  False
@@ -117,20 +117,20 @@ class LANE_DETECTION:
         self.image =  img
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
         self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*0.95))
-        self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.1)
-        self.window_half_width = int(self.img_dimensions[1]*0.09)
-        self.lb = int(0.21*self.img_dimensions[1])
+        self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.08)
+        self.window_half_width = int(self.img_dimensions[1]*0.07)
+        self.lb = int(0.10*self.img_dimensions[1])
         self.ub = int(0.32*self.img_dimensions[1])
         x =  np.linspace(0,self.img_dimensions[1]-1, self.img_dimensions[1])
         self.parabola = -200*x*(x-self.img_dimensions[1])
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=5
+        self.sliding_window_recenter_thres=9
         x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
         self.lanebola = -50*x*(x+self.lb -self.ub)
         self.calc_perspective()
 
         if self.ego_vehicle_in_frame :
-            self.windows_range = range(int(self.windows_per_line*0.09), self.windows_per_line, 1)
+            self.windows_range = range(int(self.windows_per_line*0.1), self.windows_per_line, 1)
         else:
             self.windows_range = range( self.windows_per_line)
         self.ploty = np.linspace(0, self.UNWARPED_SIZE[0] - 1, self.UNWARPED_SIZE[0])
@@ -142,7 +142,8 @@ class LANE_DETECTION:
         self.previous_right_lane_lines = LANE_HISTORY(test_points = test)
         self.total_img_count = 0
         self.margin_red = 1# .995
-        
+        self.tot_key_pts = create_queue(30)
+
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[0, self.img_dimensions[0]*12//13],
@@ -181,10 +182,10 @@ class LANE_DETECTION:
                 Lhs += outer
                 Rhs += np.matmul(outer, point)
         self.vanishing_point= np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
-        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.05 *self.img_dimensions[1] :
+        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.01 *self.img_dimensions[1] :
             print("ABSURD POSITION TRY OTHER PARAMETERS")
-            self.vanishing_point = self.img_dimensions[1]//2
-        top =self.vanishing_point[1] + 20
+            self.vanishing_point[0] = self.img_dimensions[1]//2
+        top =self.vanishing_point[1] + self.WRAPPED_WIDTH//12
         bottom = self.img_dimensions[0]+200
         lane_roi_points = np.array([
                     [self.img_dimensions[1]*6//80, self.img_dimensions[0]],
@@ -208,7 +209,6 @@ class LANE_DETECTION:
         dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
                             [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
                             [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
-        print(src_points,dst_points)
         self.trans_mat = cv2.getPerspectiveTransform(src_points, dst_points)
         self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
         min_wid = 1000
@@ -217,8 +217,10 @@ class LANE_DETECTION:
 
         x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
         grad= np.tile(5*x,mask.shape[1]).reshape((mask.shape[0], mask.shape[1]))
-
+        histx =   np.sum(mask[mask.shape[0]*3//4:,:], axis=0)
+        # histx = histx * self.lanebola
         midpoint = self.UNWARPED_SIZE[0]//2
+        print( midpoint,self.ub , self.detect_lane_start(mask[:,midpoint-self.ub :midpoint-self.lb]))
         x1 = midpoint-self.ub + self.detect_lane_start(mask[:,midpoint-self.ub :midpoint-self.lb])
         x2 = midpoint+self.lb + self.detect_lane_start(mask[:,midpoint+self.lb :midpoint+self.ub])
 
@@ -458,6 +460,10 @@ class LANE_DETECTION:
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])   
         total_non_zeros = len(nonzeroy)
+        self.tot_key_pts.append(total_non_zeros)
+        skip = False
+        if total_non_zeros /self.tot_key_pts[0] < 0.5 :
+            skip = True
         non_zero_found_pct = 0.0
         left_lane_inds = []
         right_lane_inds = []
@@ -559,13 +565,13 @@ class LANE_DETECTION:
                 #     leftx.extend(nonzerox[good_right_inds] - lane_width)
                 #     lefty.extend(nonzeroy[good_right_inds])
                 #     wleftx.extend([2000//len(good_right_inds)]*len(good_right_inds))
-                # if len(centerx) > minpix:    
-                #     centerx_current = np.int(mode(centerx)[0])
-                #     centers.append(centerx_current)
-                #     center_idx.append(window)
-                # elif len(center_idx) > 5 :
-                #     coef = np.polyfit(np.array(center_idx),np.array(centers),2)
-                #     centerx_current = int(np.polyval(coef, window+1))
+                if len(centerx) > minpix:    
+                    centerx_current = np.int(mode(centerx)[0])
+                    centers.append(centerx_current)
+                    center_idx.append(window)
+                elif len(center_idx) > 5 :
+                    coef = np.polyfit(np.array(center_idx),np.array(centers),2)
+                    centerx_current = int(np.polyval(coef, window+1))
 
                 leftx_current = int(centerx_current -lane_width/2)
                 rightx_current = int(centerx_current +lane_width/2)
@@ -601,7 +607,7 @@ class LANE_DETECTION:
         if len(leftx)>minpix:
             left_fit = np.polyfit(lefty, leftx, 2,w=wleftx)
             left_line.polynomial_coeff = left_fit
-            if not self.previous_left_lane_lines.append(left_line):
+            if not self.previous_left_lane_lines.addlane(left_line,skip = skip):
                 left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
                 left_line.polynomial_coeff = left_fit
                 # self.previous_left_lane_lines.append(left_line, force=True)
@@ -616,7 +622,7 @@ class LANE_DETECTION:
         if len(rightx)>minpix:
             right_fit = np.polyfit(righty, rightx, 2,w=wrightx)
             right_line.polynomial_coeff = right_fit
-            if not self.previous_right_lane_lines.append(right_line):
+            if not self.previous_right_lane_lines.addlane(right_line,skip = skip):
                 right_fit = self.previous_right_lane_lines.get_smoothed_polynomial()
                 right_line.polynomial_coeff = right_fit
                 # self.previous_right_lane_lines.append(right_line, force=True)
