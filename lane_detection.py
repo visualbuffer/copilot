@@ -51,7 +51,7 @@ class LANE_HISTORY:
     def __init__(self, queue_depth=12, test_points=[300, 500, 700], poly_max_deviation_distance=100, smoothing = 10):
         self.lane_lines = create_queue(queue_depth)
         self.smoothed_poly = None
-        self.test_points = test_points
+        self.test_points = np.asarray(test_points)
         self.poly_max_deviation_distance = poly_max_deviation_distance
         self.lost = False
         self.lost_count = 0
@@ -68,8 +68,8 @@ class LANE_HISTORY:
             self.lost_count = 0
             print("**** RESET****")
             return True
-        test_y_smooth = np.asarray(list(map(lambda x: np.polyval(self.smoothed_poly,x), self.test_points)))
-        test_y_new = np.asarray(list(map(lambda x: np.polyval(lane_line.polynomial_coeff,x), self.test_points)))
+        test_y_smooth = np.asarray(list(map(lambda x: np.polyval(self.smoothed_poly,x), -self.test_points)))
+        test_y_new = np.asarray(list(map(lambda x: np.polyval(lane_line.polynomial_coeff,x), -self.test_points)))
         dist = np.absolute(test_y_smooth - test_y_new)
         max_dist = dist[np.argmax(dist)]
         if max_dist > self.poly_max_deviation_distance:
@@ -133,7 +133,7 @@ class LANE_DETECTION:
             self.windows_range = range(int(self.windows_per_line*0.1), self.windows_per_line, 1)
         else:
             self.windows_range = range( self.windows_per_line)
-        self.ploty = np.linspace(0, self.UNWARPED_SIZE[0] - 1, self.UNWARPED_SIZE[0])
+        self.ploty = np.linspace(self.UNWARPED_SIZE[1] //2, self.UNWARPED_SIZE[1]- 1, self.UNWARPED_SIZE[1]//2)
         self.previous_left_lane_line = None
         self.previous_right_lane_line = None
         test = np.arange(0.1,1,0.1)*self.img_dimensions[0]
@@ -143,6 +143,7 @@ class LANE_DETECTION:
         self.total_img_count = 0
         self.margin_red = 1# .995
         self.tot_key_pts = create_queue(30)
+
 
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
@@ -216,8 +217,8 @@ class LANE_DETECTION:
         mask = compute_hls_white_yellow_binary(img) 
 
         x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
-        grad= np.tile(5*x,mask.shape[1]).reshape((mask.shape[0], mask.shape[1]))
-        histx =   np.sum(mask[mask.shape[0]*3//4:,:], axis=0)
+
+
         # histx = histx * self.lanebola
         midpoint = self.UNWARPED_SIZE[0]//2
         print( midpoint,self.ub , self.detect_lane_start(mask[:,midpoint-self.ub :midpoint-self.lb]))
@@ -342,10 +343,10 @@ class LANE_DETECTION:
         """
         color_warp = np.zeros_like(warped_img).astype(np.uint8)
         
-        ploty = np.linspace(0, warped_img.shape[0] - 1, warped_img.shape[0])
+
         # Recast the x and y points into usable format for cv2.fillPoly()
-        pts_left = np.array([np.transpose(np.vstack([left_line.line_fit_x, ploty]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x, ploty])))])
+        pts_left = np.array([np.transpose(np.vstack([left_line.line_fit_x, self.ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x, self.ploty])))])
         pts = np.hstack((pts_left, pts_right))
         cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
         newwarp = cv2.warpPerspective(color_warp, self.inv_trans_mat, (undist_img.shape[1], undist_img.shape[0])) 
@@ -362,9 +363,8 @@ class LANE_DETECTION:
         
         # Now draw the lines
         out_img = img.copy()
-        ploty = np.linspace(0, out_img.shape[0] - 1, out_img.shape[0])
-        pts_left = np.dstack((left_line.line_fit_x, ploty)).astype(np.int32)
-        pts_right = np.dstack((right_line.line_fit_x, ploty)).astype(np.int32)
+        pts_left = np.dstack((left_line.line_fit_x, self.ploty)).astype(np.int32)
+        pts_right = np.dstack((right_line.line_fit_x, self.ploty)).astype(np.int32)
 
         cv2.polylines(out_img, pts_left, False,  (255, 140,0), 5)
         cv2.polylines(out_img, pts_right, False, (255, 140,0), 5)
@@ -384,16 +384,16 @@ class LANE_DETECTION:
         # And recast the x and y points into usable format for cv2.fillPoly()
         warped_img = img.copy()
         margin = self.window_half_width
-        ploty = np.linspace(0, warped_img.shape[0] - 1, warped_img.shape[0])
+
         
-        left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - margin, ploty]))])
+        left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - margin, self.ploty]))])
         left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_line.line_fit_x + margin, 
-                                      ploty])))])
+                                      self.ploty])))])
         left_line_pts = np.hstack((left_line_window1, left_line_window2))
         
-        right_line_window1 = np.array([np.transpose(np.vstack([right_line.line_fit_x - margin, ploty]))])
+        right_line_window1 = np.array([np.transpose(np.vstack([right_line.line_fit_x - margin, self.ploty]))])
         right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x + margin, 
-                                      ploty])))])
+                                      self.ploty])))])
         right_line_pts = np.hstack((right_line_window1, right_line_window2))
 
         # Create RGB image from binary warped image
@@ -422,12 +422,11 @@ class LANE_DETECTION:
         """
         Returns the triple (left_curvature, right_curvature, lane_center_offset), which are all in meters
         """        
-        ploty = self.ploty
-        y_eval = np.max(ploty)
+        y_eval = np.max(self.ploty)
         leftx = left_line.line_fit_x
         rightx = right_line.line_fit_x
-        left_fit_cr = np.polyfit(ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
-        right_fit_cr = np.polyfit(ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
+        left_fit_cr = np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
+        right_fit_cr = np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
         left_curverad = int((1 + (2 * left_fit_cr[0] * y_eval * self.ym_per_px + left_fit_cr[1])**2)**1.5) / np.absolute(2 * left_fit_cr[0])
         right_curverad = int((1 + (2 *right_fit_cr[0] * y_eval * self.ym_per_px + right_fit_cr[1])**2)**1.5) / np.absolute(2 * right_fit_cr[0])
         left_fit = left_line.polynomial_coeff
@@ -529,18 +528,18 @@ class LANE_DETECTION:
 
                 if len(good_left_inds) > minpix:
                     leftx.extend(nonzerox[good_left_inds])
-                    lefty.extend(nonzeroy[good_left_inds])
+                    lefty.extend(-nonzeroy[good_left_inds])
                     
                     centerx = nonzerox[good_left_inds] + lane_width//2
                     rightx.extend(nonzerox[good_left_inds] + lane_width)
-                    righty.extend(nonzeroy[good_left_inds])
+                    righty.extend(-nonzeroy[good_left_inds])
                     # centery = nonzeroy[good_left_inds]
                 if len(good_right_inds) > minpix:
                     rightx.extend(nonzerox[good_right_inds])
-                    righty.extend(nonzeroy[good_right_inds])
+                    righty.extend(-nonzeroy[good_right_inds])
                     centerx = np.append(centerx, nonzerox[good_right_inds] -lane_width//2)
                     leftx.extend(nonzerox[good_right_inds] - lane_width)
-                    lefty.extend(nonzeroy[good_right_inds])
+                    lefty.extend(-nonzeroy[good_right_inds])
                 if (len(good_left_inds)> minpix )or (len(good_right_inds) > minpix ):
                     wleftx.extend([2000//(len(good_left_inds)+len(good_right_inds))]*(len(good_left_inds)+len(good_right_inds)))
                     
@@ -599,11 +598,12 @@ class LANE_DETECTION:
             rightx = np.array(nonzerox[right_lane_inds])
             righty = np.array(nonzeroy[right_lane_inds])
             leftx = np.concatenate((leftx, rightx-lane_width)) 
-            lefty= np.concatenate((lefty, righty)) 
+            lefty= -1*np.concatenate((lefty, righty)) 
             rightx= np.concatenate((rightx, leftx+lane_width)) 
-            righty= np.concatenate((righty, lefty)) 
+            righty= -1*np.concatenate((righty, lefty)) 
             wleftx =None
             wrightx=None 
+            print(max(righty))
         if len(leftx)>minpix:
             left_fit = np.polyfit(lefty, leftx, 2,w=wleftx)
             left_line.polynomial_coeff = left_fit
@@ -647,21 +647,20 @@ class LANE_DETECTION:
 
     
         # Generate x and y values for plotting
-        ploty = np.linspace(0, warped_img.shape[0] - 1, warped_img.shape[0] )
         
-        left_fitx = np.polyval(left_fit, ploty)
-        right_fitx = np.polyval(right_fit, ploty)
+        
+
         
         
         left_line.polynomial_coeff = left_fit
-        left_line.line_fit_x = left_fitx
+        left_line.line_fit_x = np.polyval(left_fit, -self.ploty )
         left_line.non_zero_x = np.array(leftx,np.int)  
-        left_line.non_zero_y = np.array(lefty,np.int)
+        left_line.non_zero_y = -np.array(lefty,np.int)
 
         right_line.polynomial_coeff = right_fit
-        right_line.line_fit_x = right_fitx
+        right_line.line_fit_x = np.polyval(right_fit, -self.ploty )
         right_line.non_zero_x = np.array(rightx,np.int)
-        right_line.non_zero_y = np.array(righty,np.int)
+        right_line.non_zero_y =-np.array(righty,np.int)
 
         
         return (left_line, right_line,warped_img)

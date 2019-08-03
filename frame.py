@@ -177,13 +177,13 @@ class FRAME :
         points =np.array( [box.xmid, box.ymax], dtype='float32').reshape(1,1,2)
         new_points = cv2.perspectiveTransform(points,self.lane.trans_mat)
         new_points =  points.reshape(2)
-        left= np.polyval(self.lane.previous_left_lane_lines.smoothed_poly ,new_points[1]) - new_points[0]
-        right= np.polyval(self.lane.previous_right_lane_lines.smoothed_poly ,new_points[1]) - new_points[0]
+        left= np.polyval(self.lane.previous_left_lane_lines.smoothed_poly ,-new_points[1]) - new_points[0]
+        right= np.polyval(self.lane.previous_right_lane_lines.smoothed_poly ,-new_points[1]) - new_points[0]
         status = "my"
         if left < 0 and right <0:
-            status = "left"
-        elif right>0 and left >0 :
             status = "right"
+        elif right>0 and left >0 :
+            status = "left"
         # print(box._id,status, left, right)
         return status
 
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     frame = FRAME(image=image)
     video_reader.set(1,0*fps)
     start = datetime.utcnow().timestamp()
-    frames = nb_frames//2
+    frames = nb_frames
     dur = frames/fps
     for i in tqdm(range(frames)):
         status, image = video_reader.read()
