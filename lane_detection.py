@@ -475,17 +475,17 @@ class LANE_DETECTION:
         right_line = LANE_LINE()                 
         if self.previous_left_lane_line is not None and self.previous_right_lane_line is not None:
             left_lane_inds = ((nonzerox > (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                           + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
+                                           - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
                                            + self.previous_left_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                            + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
+                                            - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
                                             + self.previous_left_lane_line.polynomial_coeff[2] + margin15))) 
 
             right_lane_inds = ((nonzerox > (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                           + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
+                                           - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
                                            + self.previous_right_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                            + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
+                                            - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
                                             + self.previous_right_lane_line.polynomial_coeff[2] + margin15))) 
             
             non_zero_found_left = np.sum(left_lane_inds)
