@@ -110,11 +110,12 @@ class LANE_DETECTION:
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     ego_vehicle_in_frame=False
-    def __init__(self,  img ):
+    def __init__(self,  img,fps ):
         self.objpts = None
+        self.fps=int(fps)
         self.imgpts = None
         self.lane_roi = None
-        self.lane_width = create_queue(10)
+        self.lane_width = create_queue(3*self.fps)
         # IMAGE PROPERTIES
         self.image =  img
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
@@ -138,13 +139,13 @@ class LANE_DETECTION:
         self.ploty = np.linspace(self.UNWARPED_SIZE[1] //2, self.UNWARPED_SIZE[1]- 1, self.UNWARPED_SIZE[1]//2)
         self.previous_left_lane_line = None
         self.previous_right_lane_line = None
-        test = np.arange(0.1,1,0.1)*self.img_dimensions[0]
+        test = np.arange(0.6,1,0.05)*self.img_dimensions[0]
         test = test.astype(int)
-        self.previous_left_lane_lines = LANE_HISTORY(test_points = test)
-        self.previous_right_lane_lines = LANE_HISTORY(test_points = test)
+        self.previous_left_lane_lines = LANE_HISTORY(test_points = test, queue_depth=self.fps//5)
+        self.previous_right_lane_lines = LANE_HISTORY(test_points = test, queue_depth=self.fps//5)
         self.total_img_count = 0
         self.margin_red = 1# .995
-        self.tot_key_pts = create_queue(30)
+        self.tot_key_pts = create_queue(self.fps*3//2)
         self.message = ""
 
 
@@ -475,23 +476,23 @@ class LANE_DETECTION:
         right_line = LANE_LINE()                 
         if self.previous_left_lane_line is not None and self.previous_right_lane_line is not None:
             left_lane_inds = ((nonzerox > (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                           + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
+                                           - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
                                            + self.previous_left_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                            + self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
+                                            - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
                                             + self.previous_left_lane_line.polynomial_coeff[2] + margin15))) 
 
             right_lane_inds = ((nonzerox > (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                           + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
+                                           - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
                                            + self.previous_right_lane_line.polynomial_coeff[2] - margin15)) 
                               & (nonzerox < (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-                                            + self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
+                                            - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
                                             + self.previous_right_lane_line.polynomial_coeff[2] + margin15))) 
             
             non_zero_found_left = np.sum(left_lane_inds)
             non_zero_found_right = np.sum(right_lane_inds)
             non_zero_found_pct = (non_zero_found_left + non_zero_found_right) / total_non_zeros
-            print("[Previous lane] Found pct={0}".format(non_zero_found_pct))
+            print("[Previous lane] Found pct={0}".format(non_zero_found_pct),non_zero_found_left , non_zero_found_right,total_non_zeros)
         if non_zero_found_pct < 0.9:
             self.message += "| PCT "+ str(non_zero_found_pct)+" "
             midpoint = self.UNWARPED_SIZE[0]//2
@@ -604,16 +605,16 @@ class LANE_DETECTION:
             #     centerx =np.array([])
 
             leftx = np.array(nonzerox[left_lane_inds])
-            lefty = np.array(nonzeroy[left_lane_inds] )
+            lefty = -1*np.array(nonzeroy[left_lane_inds] )
             rightx = np.array(nonzerox[right_lane_inds])
-            righty = np.array(nonzeroy[right_lane_inds])
+            righty = -1* np.array(nonzeroy[right_lane_inds])
             leftx = np.concatenate((leftx, rightx-lane_width)) 
-            lefty= -1*np.concatenate((lefty, righty)) 
+            lefty= np.concatenate((lefty, righty)) 
             rightx= np.concatenate((rightx, leftx+lane_width)) 
-            righty= -1*np.concatenate((righty, lefty)) 
+            righty= np.concatenate((righty, lefty)) 
             wleftx =None
             wrightx=None 
-            print(max(righty))
+
         if len(leftx)>minpix:
             left_fit = np.polyfit(lefty, leftx, 2,w=wleftx)
             left_line.polynomial_coeff = left_fit
@@ -685,7 +686,7 @@ if __name__ == "__main__":
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
-    ld = LANE_DETECTION( image)
+    ld = LANE_DETECTION( image,fps)
     pers_frame_time = 4# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)

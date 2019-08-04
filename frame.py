@@ -146,7 +146,7 @@ class FRAME :
         if  self.image.size ==0 :
             raise ValueError("No Image") 
         self.font_sz = 4e-4 * self.image.shape[0]
-        self.lane = LANE_DETECTION(self.image)
+        self.lane = LANE_DETECTION(self.image, self.fps)
         self.temp_dir = './images/detection/'
         self.perspective_done_at = datetime.utcnow().timestamp()
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
@@ -164,7 +164,7 @@ class FRAME :
     def perspective_tfm(self ,  pos) : 
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
-            self.lane = LANE_DETECTION(self.image)
+            self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.perspectiveTransform(pos, self.lane.trans_mat)
 
   
@@ -286,13 +286,13 @@ class FRAME :
     def warp(self, img):
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
-            self.lane = LANE_DETECTION(self.image)
+            self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.warpPerspective(img, self.lane.trans_mat, self.lane.UNWARPED_SIZE, flags=cv2.WARP_FILL_OUTLIERS+cv2.INTER_CUBIC)
 
     def unwarp(self, img):
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
-            self.lane = LANE_DETECTION(self.image)
+            self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.warpPerspective(img, self.lane.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
 
@@ -309,7 +309,7 @@ class FRAME :
 
         return 
 
-    def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.8, gamma=0):
+    def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.3, gamma=0):
         overlay = image.copy()
         off =  int(50*self.font_sz)
         for _ , box in enumerate(self.obstacles):
@@ -365,7 +365,7 @@ if __name__ == "__main__":
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
-    frame = FRAME(image=image)
+    frame = FRAME(image=image, fps =  fps)
     video_reader.set(1,0*fps)
     start = datetime.utcnow().timestamp()
     frames = nb_frames
