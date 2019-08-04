@@ -181,9 +181,9 @@ class FRAME :
         right= np.polyval(self.lane.previous_right_lane_lines.smoothed_poly ,-new_points[1]) - new_points[0]
         status = "my"
         if left < 0 and right <0:
-            status = "right"
-        elif right>0 and left >0 :
             status = "left"
+        elif right>0 and left >0 :
+            status = "right"
         # print(box._id,status, left, right)
         return status
 
