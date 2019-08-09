@@ -17,7 +17,7 @@ def compute_hls_white_yellow_binary(image,kernel_size =3):
     upper = np.uint8([35, 255, 255])
     yellow_mask = cv2.inRange(converted, lower, upper)   
     lower = np.uint8([ 0, 200,   0])
-    upper = np.uint8([180, 255, 80])
+    upper = np.uint8([180, 255, 100])
     white_mask = cv2.inRange(converted, lower, upper)
     mask = cv2.bitwise_or(white_mask, yellow_mask)
     return mask
@@ -49,7 +49,7 @@ class LANE_LINE:
         self.non_zero_y = self.non_zero_y[r]
         return
     def fitpoly(self, P0, sigma ):
-        self.polynomial_coeff,_ = curve_fit(polyfunc,self.non_zero_y, self.non_zero_x, p0=P0,)
+        self.polynomial_coeff,_ = curve_fit(polyfunc,self.non_zero_y, self.non_zero_x, p0=P0, sigma=sigma)
 
 
         return
@@ -137,7 +137,7 @@ class LANE_DETECTION:
     windows_per_line = 27
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
-    ego_vehicle_in_frame=False
+    ego_vehicle_in_frame=True
     def __init__(self,  img,fps ):
         self.objpts = None
         self.fps=int(fps)
@@ -151,7 +151,7 @@ class LANE_DETECTION:
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.08)
         self.window_half_width = int(self.img_dimensions[1]*0.07)
         self.lb = int(0.09*self.img_dimensions[1])
-        self.ub = int(0.32*self.img_dimensions[1])
+        self.ub = int(0.25*self.img_dimensions[1])
         x =  np.linspace(0,self.img_dimensions[1]-1, self.img_dimensions[1])
         self.parabola = -200*x*(x-self.img_dimensions[1])
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
@@ -497,7 +497,7 @@ class LANE_DETECTION:
         midpoint = self.UNWARPED_SIZE[0]//2
         leftx_base = midpoint-self.ub + self.detect_lane_start(warped_img[:,midpoint-self.ub :midpoint-self.lb])
         rightx_base = midpoint+self.lb + self.detect_lane_start(warped_img[:,midpoint+self.lb :midpoint+self.ub])
-        
+        window_count = self.windows_per_line
         nonzero = warped_img.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])   
@@ -532,7 +532,7 @@ class LANE_DETECTION:
         leftx_current = int(np.mean(self.leftx))
         rightx_current = int(np.mean(self.rightx))
         lane_width= int(rightx_current - leftx_current)                
-        if len(self.previous_left_lane_line.polynomial_coeff) > 0 and len(self.previous_right_lane_line.polynomial_coeff) >0:
+        if len(self.previous_left_lane_line.windows) > 0 and len(self.previous_right_lane_line.windows) >0:
             left_lane_inds = ((nonzerox > (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
                                            - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
                                            + self.previous_left_lane_line.polynomial_coeff[2] - margin15)) 
@@ -553,7 +553,7 @@ class LANE_DETECTION:
             print("[Previous lane] Found pct={0}".format(non_zero_found_pct),non_zero_found_left , non_zero_found_right,total_non_zeros)
             self.message += "| PCT "+ str(non_zero_found_pct)+" "
         if non_zero_found_pct < 0.93:
-            
+            window_count = 0 
             centerx_current = leftx_current + lane_width//2
             print("Non zeros found below thresholds, begining sliding window - pct={0}".format(non_zero_found_pct))
             left_lane_inds = []
@@ -566,8 +566,8 @@ class LANE_DETECTION:
             righty =[]
             wleftx =[]
             wrightx=[]
-            left_line.windows = []
-            right_line.windows =[]
+            left_line = LANE_LINE()
+            right_line = LANE_LINE()
             for window in self.windows_range:
                 win_y_low = warped_img.shape[0] - (window + 1)* window_height
                 win_y_high = warped_img.shape[0] - window * window_height
@@ -604,7 +604,8 @@ class LANE_DETECTION:
 
                 if s > 0 :
                     wleftx.extend([s]*s)
-                    
+                    window_count += 1
+
 
                 # doleft =  True
                 # if len(good_left_inds) > minpix:
@@ -657,6 +658,16 @@ class LANE_DETECTION:
             righty= np.concatenate((righty, lefty)) 
             wleftx =None
             wrightx=None 
+        if (window_count < self.windows_per_line//4) and (self.count> 0):
+            self.previous_left_lane_line.windows = []
+            self.previous_right_lane_line.windows = []
+            skip = True
+            self.message+="SKIPPED "
+            left_line =  self.previous_left_lane_line
+            right_line =  self.previous_right_lane_line
+            self.count+=1
+        
+            return (left_line, right_line,warped_img)
         left_line.non_zero_x = np.array(leftx,np.int)  
         left_line.non_zero_y =  np.array(lefty,np.int)
         right_line.non_zero_x = np.array(rightx,np.int)
