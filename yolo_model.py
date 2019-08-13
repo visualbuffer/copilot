@@ -51,7 +51,7 @@ class WeightReader:
         for i in range(106):
             try:
                 conv_layer = model.get_layer('conv_' + str(i))
-                print("loading weights of convolution #" + str(i))
+                # print("loading weights of convolution #" + str(i))
 
                 if i not in [81, 93, 105]:
                     norm_layer = model.get_layer('bnorm_' + str(i))
@@ -365,7 +365,7 @@ def draw_boxes(image, boxes, labels, obj_thresh):
             if box.classes[i] > obj_thresh:
                 label_str += labels[i]
                 label = i
-                print(labels[i] + ': ' + str(box.classes[i]*100) + '%')
+                # print(labels[i] + ': ' + str(box.classes[i]*100) + '%')
                 
         if label >= 0:
             cv2.rectangle(image, (box.xmin,box.ymin), (box.xmax,box.ymax), (0,255,0), 1)
@@ -405,12 +405,12 @@ class YOLO:
             self.yolov3.load_weights(self.h5_path)
         else:
         # load the weights trained on COCO into the model
-            print("LOADING WEIGHTS")
+            # print("LOADING WEIGHTS")
             weight_reader = WeightReader(self.weights_path)
             
             weight_reader.load_weights(self.yolov3)
             self.yolov3.save_weights(self.h5_path)
-        print("CREATED MODEL")
+        # print("CREATED MODEL")
 
     def preprocess_input(self, image):
         new_h, new_w, _ = image.shape
@@ -450,13 +450,13 @@ class YOLO:
             # decode the output of the network
             boxes += decode_netout(yolos[i][0], self.anchors[i], self.obj_thresh, self.nms_thresh, self.net_h, self.net_w, obstructions)
 
-        print(len(boxes))   
+        # print(len(boxes))   
         correct_yolo_boxes(boxes, image_h, image_w, self.net_h, self.net_w,ar_th=ar_th)
         do_nms(boxes, self.nms_thresh)
-        print(len(boxes))
+        # print(len(boxes))
         if plot :
             draw_boxes(image, boxes, np.asarray(self.labels)[obstructions], self.obj_thresh) 
-            print(save_path + img_path.split("/")[-1])
+            # print(save_path + img_path.split("/")[-1])
             cv2.imwrite(save_path + img_path.split("/")[-1], (image).astype('uint8')) 
         return boxes
 

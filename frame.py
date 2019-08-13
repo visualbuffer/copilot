@@ -6,7 +6,7 @@ from lane_detection import LANE_DETECTION,create_queue
 import numpy as np
 import cv2
 from datetime import datetime
-from PIL import Image
+# from PIL import Image
 # from matplotlib import pyplot as plt
 # yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
 WHITE = (255, 255, 255)
@@ -358,17 +358,17 @@ if __name__ == "__main__":
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output20.mov"
+    video_out = "videos/output10.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 0.1# seconds
+    pers_frame_time = 0.2# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
     frame = FRAME(image=image, fps =  fps)
     video_reader.set(1,0*fps)
     start = datetime.utcnow().timestamp()
-    frames = nb_frames//4
+    frames = nb_frames
     dur = frames/fps
     for i in tqdm(range(frames)):
         status, image = video_reader.read()
@@ -377,9 +377,14 @@ if __name__ == "__main__":
                 procs_img = frame.process_and_plot(image)
                 video_writer.write(procs_img) 
             except :
-                print("GOT EXEPTION TO PROCES THE IMAGE")
+                print("TGO EXEPTION TO PROCES THE IMAGE")
     stop =datetime.utcnow().timestamp()
     print(stop - start, "[s] Processing time for ", dur, " [s] at ", fps, " FPS")
+    lh = frame.lane.previous_left_lane_lines
+    rh = frame.lane.previous_right_lane_lines
+    print(lh.reset, lh.breached, lh.appended)
+    print(rh.reset, rh.breached, rh.appended)
+    print(frame.lane.ndirect,frame.lane.nskipped, frame.lane.count)
     video_reader.release()
     video_writer.release() 
     cv2.destroyAllWindows()
