@@ -152,7 +152,7 @@ class LANE_DETECTION:
     windows_per_line = 40
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
-    ego_vehicle_in_frame=True
+    ego_vehicle_in_frame=False
     def __init__(self,  img,fps ):
         self.objpts = None
         self.fps=int(fps)
@@ -175,13 +175,14 @@ class LANE_DETECTION:
         # self.lanebola = -50*x*(x+self.lb -self.ub)
         x =  np.linspace(0, self.window_half_width*2-1, self.window_half_width*2)
         self.lanebola = -50*x*(x-self.window_half_width*2)
-        self.leftx = create_queue(self.fps)
-        self.rightx = create_queue(self.fps)
+        self.leftx = create_queue(self.fps//8)
+        self.rightx = create_queue(self.fps//8)
         self.calc_perspective()
         self.ndirect = 0
         self.skipdirect =  True
         self.nskipped = 0
         self.s = 0
+        self.coef = np.array([1,1,1])
         if self.ego_vehicle_in_frame :
             self.windows_range = range(int(self.windows_per_line*0.05), self.windows_per_line, 1)
             self.window_offset = int(self.windows_per_line*0.05)
@@ -191,7 +192,7 @@ class LANE_DETECTION:
         self.ploty = np.linspace(int(self.UNWARPED_SIZE[1]*0.45), self.UNWARPED_SIZE[1]- 1, int(self.UNWARPED_SIZE[1]*0.4))
         self.previous_left_lane_line = LANE_LINE()
         self.previous_right_lane_line = LANE_LINE()
-        test = np.arange(0.6,1,0.1)*self.UNWARPED_SIZE[1]
+        test = np.arange(0.3,1,0.1)*self.UNWARPED_SIZE[1]
         test = test.astype(int)
         self.previous_left_lane_lines = LANE_HISTORY(test_points = test, queue_depth=5, ploty = self.ploty)
         self.previous_right_lane_lines = LANE_HISTORY(test_points = test, queue_depth=5, ploty = self.ploty)
@@ -691,9 +692,9 @@ class LANE_DETECTION:
                 else :
                     # centers.append(centerx_current)
                     if len(center_idx) > 5 :
-                    
-                        coef = np.polyfit(np.array(center_idx),np.array(centers),2)
-                        centerx_current = int(np.polyval(coef, window+1))
+                        self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
+                        # coef = np.polyfit(np.array(center_idx),np.array(centers),2)
+                        centerx_current = int(np.polyval(self.coef, window+1))
                     else :
                         centerx_current = self.previous_centers[window-self.window_offset]
                 all_centers.append(centerx_current)
