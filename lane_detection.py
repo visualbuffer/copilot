@@ -6,7 +6,40 @@ from matplotlib import pyplot as plt
 from collections import deque
 from scipy.stats  import mode
 from scipy.optimize import curve_fit
+from yolo_model import BoundBox
+
 temp_dir = "images/detection/detect.jpg"
+
+WHITE = (255, 255, 255)
+YELLOW = (66, 244, 238)
+GREEN = (80, 220, 60)
+LIGHT_CYAN = (255, 255, 224)
+DARK_BLUE = (139, 0, 0)
+GRAY = (128, 128, 128)
+RED = (0,0,255)
+ORANGE =(0,165,255)
+
+vehicles = [1,2,3,5,6,7,8]
+animals =[15,16,17,18,19,21,22,23,]
+humans =[0]
+obstructions =  humans + animals + vehicles
+classes = [#
+    'Ped','bicycle','car','motorbike','aeroplane','bus',\
+    'train','truck','boat','traffic light','fire hydrant','stop sign',\
+    'parking meter','bench','bird','cat','dog','horse',\
+    'sheep','cow','elephant', 'bear','zebra','giraffe',\
+    'backpack','umbrella','handbag','tie','suitcase','frisbee',\
+    'skis','snowboard','sports ball','kite','baseball bat',\
+    'baseball glove','skateboard','surfboard','tennis racket','bottle','wine glass',\
+    'cup','fork','knife','spoon','bowl','banana',\
+    'apple','sandwich','orange','broccoli','carrot','hot dog',\
+    'pizza','donut','cake','chair','sofa','pottedplant',\
+    'bed','diningtable','toilet','tvmonitor','laptop','mouse',\
+    'remote','keyboard','cell phone','microwave','oven','toaster',\
+    'sink','refrigerator','book','clock','vase','scissors',\
+    'teddy bear','hair drier','toothbrush' ]
+
+    
 def compute_hls_white_yellow_binary(image,kernel_size =3):
     """
     Returns a binary thresholded image produced retaining only white and yellow elements on the picture
@@ -29,7 +62,57 @@ def create_queue(length = 10):
 def polyfunc(x, a2, a1, a0):
      return a2*x*x + a1*x + a0
 
-
+class OBSTACLE(BoundBox):
+        xmax :int
+        xmin :int
+        ymin :int
+        ymax :int
+        xmid  :int
+        ymid  :int
+        lane : str
+        x :  int
+        y : int
+        tracker = None
+        position  : [int,int]
+        PERIOD = 4
+        __count = 0
+    
+        def __init__(self,box: BoundBox, _id) :
+            self.col_time:float =999.0
+            self._id = _id
+            
+            self.position_hist = create_queue(5)
+            # self.position_hist.append(dst)
+            self.update_coord(box)
+            self.update_score(box)
+            self.velocity = np.zeros((2))
+            self.score=box.score
+            self.label = box.label
+    
+        def update_obstacle(self, dst,  fps, n=5) :
+            old_position =  self.position
+            self.position_hist.append(dst)
+            self.col_time = min(dst[1]/(self.velocity[1]+0.001),99)
+            if (self.__count > n):
+                self.velocity = (self.position-old_position ) * fps/n    
+            self.__count += 1
+    
+        def update_coord(self,box):
+            self.xmax = box.xmax
+            self.xmin =  box.xmin
+            self.ymin  =  box.ymin
+            self.ymax =  box.ymax
+            self.xmid = int((box.xmax+box.xmin)/2)
+            self.ymid = int((box.ymax+box.ymin)/2)
+            self.position =  np.mean(self.position_hist, axis = 0)
+    
+        def update_score(self,box):     
+            self.score=box.score
+            self.label = box.label 
+    
+        def update_box(self,box):
+            self.update_coord(box)
+            self.update_score(box)
 
 
 class LANE_LINE:
@@ -71,16 +154,7 @@ class LANE_HISTORY:
         self.appended = 0 
         self.breached = 0
         self.reset = 0
-
-        #  if not added:
-        #         left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
-        #         left_line.polynomial_coeff = left_fit
-        #         # self.previous_left_lane_lines.append(left_line, force=True)
-        #         # print("**** REVISED Poly left {0}".format(left_fit))  
-        #     else:
-
-        #         left_fit = self.previous_left_lane_lines.get_smoothed_polynomial()
-        #         left_line.polynomial_coeff = left_fit         
+      
     
     def addlane(self, lane_line :LANE_LINE,):
         status = "APPENDED | "   
@@ -120,7 +194,6 @@ class LANE_HISTORY:
  
             self.breached +=1
             return False , status, lane_line 
-        # self.lane_lines.append(lane_line)
 
         self.lane_lines.append(lane_line)
         lane_line.polynomial_coeff = self.get_smoothed_polynomial()
@@ -153,26 +226,23 @@ class LANE_DETECTION:
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
     ego_vehicle_in_frame=False
+    font = cv2.FONT_HERSHEY_SIMPLEX
     def __init__(self,  img,fps ):
         self.objpts = None
         self.fps=int(fps)
         self.imgpts = None
         self.lane_roi = None
-        # self.lane_width = create_queue(3*self.fps)
         # IMAGE PROPERTIES
         self.image =  img
+        self.font_sz = 4e-4 * self.image.shape[0]
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
         self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.08)
         self.window_half_width = int(self.img_dimensions[1]*0.04)
-        # self.lb = int(0.09*self.img_dimensions[1])
-        # self.ub = int(0.25*self.img_dimensions[1])
         x =  np.linspace(0,self.img_dimensions[1]-1, self.img_dimensions[1])
         self.parabola = -200*x*(x-self.img_dimensions[1])
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
         self.sliding_window_recenter_thres=9
-        # x =  np.linspace(0,self.ub -self.lb-1, self.ub -self.lb)
-        # self.lanebola = -50*x*(x+self.lb -self.ub)
         x =  np.linspace(0, self.window_half_width*2-1, self.window_half_width*2)
         self.lanebola = -50*x*(x-self.window_half_width*2)
         self.leftx = create_queue(self.fps//8)
@@ -206,8 +276,6 @@ class LANE_DETECTION:
     def calc_perspective(self, verbose =  True):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[self.img_dimensions[1]//7, self.img_dimensions[0]],
-                    # [0, self.img_dimensions[0]],
-                    # [self.img_dimensions[1],self.img_dimensions[0]],
                     [self.img_dimensions[1]*6/7, self.img_dimensions[0]],
                     [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
                     [self.img_dimensions[1]*11//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
@@ -245,8 +313,8 @@ class LANE_DETECTION:
             print("ABSURD POSITION TRY OTHER PARAMETERS")
             self.vanishing_point[0] = self.img_dimensions[1]//2
         if abs(self.vanishing_point[1] - self.img_dimensions[0]*0.6) > 0.01 *self.img_dimensions[0] :
-                print("ABSURD POSITION TRY OTHER PARAMETERS")
-                self.vanishing_point[1] = int(self.img_dimensions[0]*0.6)
+            print("ABSURD POSITION TRY OTHER PARAMETERS")
+            self.vanishing_point[1] = int(self.img_dimensions[0]*0.6)
         top =self.vanishing_point[1] + self.WRAPPED_WIDTH//6
         bottom = self.img_dimensions[0]+200
         
@@ -254,14 +322,11 @@ class LANE_DETECTION:
         def on_line(p1, p2, ycoord):
             return [p1[0]+ (p2[0]-p1[0])/float(p2[1]-p1[1])*(ycoord-p1[1]), ycoord]
 
-
-        #define source and destination targets
         p1 = [self.vanishing_point[0] - self.WRAPPED_WIDTH/2, top]
         p2 = [self.vanishing_point[0] + self.WRAPPED_WIDTH/2, top]
         p3 = on_line(p2,self.vanishing_point, bottom)
         p4 = on_line(p1,self.vanishing_point, bottom)
         src_points = np.array([p1,p2,p3,p4], dtype=np.float32)
-        # print(src_points,vanishing_point)
         dst_points = np.array([[0, 0], [self.UNWARPED_SIZE[0], 0],
                             [self.UNWARPED_SIZE[0], self.UNWARPED_SIZE[1]],
                             [0, self.UNWARPED_SIZE[1]]], dtype=np.float32)
@@ -272,9 +337,6 @@ class LANE_DETECTION:
         mask = compute_hls_white_yellow_binary(img) 
 
         x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
-
-
-        # histx = histx * self.lanebola
         x1 = int(self.UNWARPED_SIZE[0]*.25)
         x2 = int(self.UNWARPED_SIZE[0]*.75) 
         x1 = x1-self.window_half_width + self.detect_lane_start(mask[:,x1-self.window_half_width :x1+self.window_half_width])
@@ -288,25 +350,7 @@ class LANE_DETECTION:
                     [self.vanishing_point[0] - 3*self.img_dimensions[1]//25,self.vanishing_point[1] - 10]], dtype=np.int32)
         cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
         self.lane_roi =  self.lane_roi*grad
-        # lane_roi_points = np.array([
-        #             [self.img_dimensions[1]*6//80, self.img_dimensions[0]],
-        #             [self.img_dimensions[1]*74//80,self.img_dimensions[0]],
-        #             [self.vanishing_point[0] + 3*self.img_dimensions[1]//25,self.vanishing_point[1] - 10],
-        #             [self.vanishing_point[0] - 3*self.img_dimensions[1]//25,self.vanishing_point[1] - 10]], dtype=np.int32)
 
-        # lane_roi_points2 = np.array([
-        #                 [x1 - self.UNWARPED_SIZE[0]//100, self.UNWARPED_SIZE[1]],
-        #                 [x2 + self.UNWARPED_SIZE[0]//100,self.UNWARPED_SIZE[1]],
-        #                 [self.UNWARPED_SIZE[0] , - 10],
-        #                 [0, - 10]], dtype="float32")
-
-        # pt =  lane_roi_points2.reshape(1, 4, 2)
-        # l2  = cv2.perspectiveTransform(pt, self.inv_trans_mat) 
-        # lane2=               [ cv2.perspectiveTransform(pt, self.inv_trans_mat) for pt in lane_roi_points2]
-        # # cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
-        # # self.lane_roi =  self.lane_roi*grad
-        # cv2.fillPoly(self.lane_roi , [lane_roi_points], 1)
-        # # self.lane_roi =  self.lane_roi*grad
        
 
         if (x2-x1<min_wid):
@@ -331,9 +375,39 @@ class LANE_DETECTION:
             cv2.imwrite(self.temp_dir+"perspective3.jpg",img2)
             return img_orig
         return
-        
+
+    def calculate_position(self, box: OBSTACLE):
+            pos = np.array((box.xmax/2+box.xmin/2, box.ymax)).reshape(1, 1, -1)
+            dst =  cv2.perspectiveTransform(pos, self.trans_mat).reshape(2)
+            box.x =  int(dst[0])
+            box.y = -int(dst[1])
+            dst =  np.array([dst[0]/self.px_per_xm,(-dst[1])/self.px_per_ym])
+            box.update_obstacle(dst,self.fps)
+
+            left= np.polyval(self.previous_left_lane_lines.smoothed_poly ,box.y) - box.x
+            right= np.polyval(self.previous_right_lane_lines.smoothed_poly ,box.y) - box.x
+            status = "my"
+            if left < 0 and right <0:
+                status = "left"
+            elif right>0 and left >0 :
+                status = "right"
+            box.lane = status
+            return box
+        # else:
+            
+        #     return np.array([0,0])    
+    def put_text(self, overlay,text, coord, color=WHITE):
+        sz = self.font_sz*25
+        rect_ht = int(sz *1.4)
+        rect_wd = int(len(text)*sz*0.9)
+        p1 = (coord[0], coord[1]+2)
+        p2 = (coord[0]+rect_wd, coord[1]-rect_ht)
+        cv2.rectangle(overlay, p1, p2,  (0, 0, 0),-1)
+        cv2.putText(overlay, text,   coord,  self.font, self.font_sz, color, 1, cv2.LINE_AA)
+
+        return 
     
-    def process_image(self, img):
+    def process_image(self, img,obstacles :[OBSTACLE] =[]):
         """
         Attempts to find lane lines on the given image and returns an image with lane area colored in green
         as well as small intermediate images overlaid on top to understand how the algorithm is performing
@@ -344,6 +418,40 @@ class LANE_DETECTION:
         undist_img =  img.copy()
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         ll, rl , thres_img_psp= self.compute_lane_lines(undist_img)
+        overlay = thres_img_psp.copy() 
+        for i in range(len(obstacles)):
+            obstacles[i] =  self.calculate_position(obstacles[i])
+            box =  obstacles[i]
+            past=[box.xmin,box.ymin,box.xmax,box.ymax]
+
+            t1 = classes[obstructions[box.label]] +" ["+str(int(box.position[1])) + "m]" 
+            t2 = "("+str(int(box.score*100))+"%) ID: " +str(box._id)
+            b1= box.lane + "| "+str(int(box.position[0]))+","+str(int(box.position[1]))+"m"
+            b2 = str(int(box.velocity[1]))+"m/s"
+            
+            pt1 = (box.xmin, box.ymin-off)
+            pt2 =  (box.xmin, box.ymin)
+            pb1 = (box.xmin, box.ymax+off)
+            pb2 = (box.xmin, box.ymax+2*off)
+            
+            self.put_text(overlay, t1,   pt1)
+            self.put_text(overlay, t2,   pt2)
+            self.put_text(overlay, b1,   pb1)
+            self.put_text(overlay, b2,   pb2)
+            if box.col_time < 99 : 
+                b3 = "Col "+str(int(box.col_time))+"s"
+                pb3 =  (box.xmin, box.ymax+3*off)
+                self.put_text(overlay, b3,   pb3)
+            past_center =  (int(past[0]/2+past[2]/2), past[3])
+            
+            color = ORANGE if box.velocity[1] > 0  else GREEN
+            cv2.rectangle(overlay, (box.xmin,box.ymin), (box.xmax,box.ymax), color,2)
+            cv2.circle(overlay,past_center,1, GRAY,2)
+            image =  cv2.addWeighted(image, alpha, overlay, beta, gamma)
+            # cv2.imwrite(self.temp_dir+"detect.jpg", image)
+
+
+        
         ll.purge_points(self.UNWARPED_SIZE[1])
         rl.purge_points(self.UNWARPED_SIZE[1])
         lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
@@ -352,7 +460,7 @@ class LANE_DETECTION:
         drawn_lines = self.draw_lane_lines(out_img, ll, rl)        
         drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
         drawn_lane_area = self.draw_lane_area(out_img, undist_img, ll, rl)        
-        drawn_hotspots = self.draw_lines_hotspots(out_img, ll, rl)
+        drawn_hotspots = self.draw_lines_hotspots(out_img, ll, rl, obstacles)
         combined_lane_img = self.combine_images(drawn_lane_area, drawn_lines, drawn_lines_regions,drawn_hotspots, img)
         final_img = self.draw_lane_curvature_text(combined_lane_img, lcr, rcr, lco)
         
@@ -381,11 +489,10 @@ class LANE_DETECTION:
                                      "{:.2f}m Left".format(math.fabs(center_offset_meters)))
             
         
-        # print(txt_values)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img, txt_header, (offset_x, offset_y), font, 1, (255,255,255), 1, cv2.LINE_AA)
-        cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 5), font, 1, (255,255,255), 2, cv2.LINE_AA)
-        cv2.putText(img, self.message, (offset_x, self.img_dimensions[0]-10), font, 1, (255,0,0), 1, cv2.LINE_AA)
+
+        cv2.putText(img, txt_header, (offset_x, offset_y), self.font, 1, (255,255,255), 1, cv2.LINE_AA)
+        cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 5), self.font, 1, (255,255,255), 2, cv2.LINE_AA)
+        cv2.putText(img, self.message, (offset_x, self.img_dimensions[0]-10), self.font, 1, (255,0,0), 1, cv2.LINE_AA)
         return img
     
     def combine_images(self, lane_area_img, lines_img, lines_regions_img,lane_hotspots_img, psp_color_img):        
@@ -487,7 +594,7 @@ class LANE_DETECTION:
         return warped_img
 
 
-    def draw_lines_hotspots(self, img, left_line, right_line):
+    def draw_lines_hotspots(self, img, left_line, right_line, obstacles:[OBSTACLE] =  []):
         """
         Returns a RGB image where the portions of the lane lines that were
         identified by our pipeline are colored in yellow (left) and blue (right)
@@ -500,6 +607,9 @@ class LANE_DETECTION:
             cv2.circle( out_img,( right_line.non_zero_x[i],-right_line.non_zero_y[i]), 5, (0, 0, 255), -1)
         cv2.line(out_img, (int(np.average(self.leftx)), 0), (int(np.average(self.leftx)), self.UNWARPED_SIZE[1]), (255, 255, 0), 4)
         cv2.line(out_img, (int(np.average(self.rightx)), 0), (int(np.average(self.rightx)), self.UNWARPED_SIZE[1]), (0, 0, 255), 4)
+        for i in range(len(obstacles)):
+            box =  obstacles[i]
+            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, 1, (255,255,255), 1, cv2.LINE_AA)    
         return out_img
 
     def compute_lane_curvature(self, left_line, right_line):
@@ -617,6 +727,7 @@ class LANE_DETECTION:
             righty =[]
             left_line = LANE_LINE()
             right_line = LANE_LINE()
+            curve_compute =  0
             self.s =  0 
             
             for window in self.windows_range:
@@ -688,13 +799,12 @@ class LANE_DETECTION:
                     centerx_current = int(np.average(centerx))
                     centers.append(centerx_current)
                     center_idx.append(window)
-                    # center_idx.append(window)
                 else :
-                    # centers.append(centerx_current)
                     if len(center_idx) > 5 :
-                        self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
-                        # coef = np.polyfit(np.array(center_idx),np.array(centers),2)
+                        if curve_compute% 5 == 0 :
+                            self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
                         centerx_current = int(np.polyval(self.coef, window+1))
+                        curve_compute += 1
                     else :
                         centerx_current = self.previous_centers[window-self.window_offset]
                 all_centers.append(centerx_current)
