@@ -1,7 +1,7 @@
 from camera import CAMERA
 from yolo_model import BoundBox,  YOLO 
 from utils.bbox import bbox_iou 
-from lane_detection import LANE_DETECTION,create_queue, OBSTACLE
+from lane_detection import LANE_DETECTION,create_queue, OBSTACLE,obstructions
 # from lane_finder import LANE_DETECTION
 import numpy as np
 import cv2
@@ -97,38 +97,11 @@ class FRAME :
         return 30
     
 
-    # def determine_lane(self, box:OBSTACLE):
-    #     points =np.array( [box.xmid, box.ymax], dtype='float32').reshape(1,1,2)
-    #     new_points = cv2.perspectiveTransform(points,self.lane.trans_mat)
-    #     new_points =  points.reshape(2)
-    #     left= np.polyval(self.lane.previous_left_lane_lines.smoothed_poly ,-new_points[1]) - new_points[0]
-    #     right= np.polyval(self.lane.previous_right_lane_lines.smoothed_poly ,-new_points[1]) - new_points[0]
-    #     status = "my"
-    #     if left < 0 and right <0:
-    #         status = "left"
-    #     elif right>0 and left >0 :
-    #         status = "right"
-    #     # print(box._id,status, left, right)
-    #     return status
 
-    # def calculate_position(self, box: BoundBox):
-    #     if (self.perspective_done_at > 0):
-    #         pos = np.array((box.xmax/2+box.xmin/2, box.ymax)).reshape(1, 1, -1)
-    #         dst = self.perspective_tfm(pos).reshape(2)
-    #         dst =  np.array([dst[0]/self.lane.px_per_xm,(self.lane.UNWARPED_SIZE[1]-dst[1])/self.lane.px_per_ym])
-    #         return dst
-    #     else:
-            
-    #         return np.array([0,0])
     
     def process_and_plot(self,image):
         self.update_trackers(image)
         lane_img = self.lane.process_image( image, self.obstacles)
-        
-        if self.count > 1 :
-            lane_img = self.draw_lane_weighted(lane_img)
-            # plt.imshow(lane_img)
-            # plt.show()
         return lane_img
 
     @staticmethod
@@ -199,9 +172,6 @@ class FRAME :
 
         
         self.count +=1
-        # for i in range(len(self.obstacles)):
-        #     lane = self.determine_lane(self.obstacles[i])
-        #     self.obstacles[i].lane =  lane
 
            
         return
@@ -223,51 +193,6 @@ class FRAME :
 
 
 
-    # def put_text(self, overlay,text, coord, color=WHITE):
-    #     sz = self.font_sz*25
-    #     rect_ht = int(sz *1.4)
-    #     rect_wd = int(len(text)*sz*0.9)
-    #     p1 = (coord[0], coord[1]+2)
-    #     p2 = (coord[0]+rect_wd, coord[1]-rect_ht)
-    #     cv2.rectangle(overlay, p1, p2,  (0, 0, 0),-1)
-    #     cv2.putText(overlay, text,   coord,  self.font, self.font_sz, color, 1, cv2.LINE_AA)
-
-    #     return 
-
-    # def draw_lane_weighted(self, image, thickness=5, alpha=1, beta=0.3, gamma=0):
-    #     overlay = image.copy()
-    #     off =  int(50*self.font_sz)
-    #     for _ , box in enumerate(self.obstacles):
-    #         past=[box.xmin,box.ymin,box.xmax,box.ymax]
-
-    #         t1 = classes[obstructions[box.label]] +" ["+str(int(box.position[1])) + "m]" 
-    #         t2 = "("+str(int(box.score*100))+"%) ID: " +str(box._id)
-    #         b1= box.lane + "| "+str(int(box.position[0]))+","+str(int(box.position[1]))+"m"
-    #         b2 = str(int(box.velocity[1]))+"m/s"
-            
-    #         pt1 = (box.xmin, box.ymin-off)
-    #         pt2 =  (box.xmin, box.ymin)
-    #         pb1 = (box.xmin, box.ymax+off)
-    #         pb2 = (box.xmin, box.ymax+2*off)
-            
-    #         self.put_text(overlay, t1,   pt1)
-    #         self.put_text(overlay, t2,   pt2)
-    #         self.put_text(overlay, b1,   pb1)
-    #         self.put_text(overlay, b2,   pb2)
-    #         if box.col_time < 99 : 
-    #             b3 = "Col "+str(int(box.col_time))+"s"
-    #             pb3 =  (box.xmin, box.ymax+3*off)
-    #             self.put_text(overlay, b3,   pb3)
-    #         past_center =  (int(past[0]/2+past[2]/2), past[3])
-            
-    #         color = ORANGE if box.velocity[1] > 0  else GREEN
-    #         cv2.rectangle(overlay, (box.xmin,box.ymin), (box.xmax,box.ymax), color,2)
-    #         cv2.circle(overlay,past_center,1, GRAY,2)
-    #     image =  cv2.addWeighted(image, alpha, overlay, beta, gamma)
-    #     # cv2.imwrite(self.temp_dir+"detect.jpg", image)
-
-        
-    #     return image
     
      
     
@@ -296,17 +221,18 @@ if __name__ == "__main__":
     frames = nb_frames
     dur = frames/fps
     for i in tqdm(range(frames)):
+
         status, image = video_reader.read()
         if  status :
-            # try : 
+            try : 
                 procs_img = frame.process_and_plot(image)
                 video_writer.write(procs_img) 
-            # except :
-            #     print("TGO EXEPTION TO PROCES THE IMAGE")
+            except :
+                print("TGO EXEPTION TO PROCES THE IMAGE")
     stop =datetime.utcnow().timestamp()
     print(stop - start, "[s] Processing time for ", dur, " [s] at ", fps, " FPS")
-    lh = frame.lane.previous_left_lane_lines
-    rh = frame.lane.previous_right_lane_lines
+    lh = frame.lane.left_line_history
+    rh = frame.lane.right_line_history
     print(lh.reset, lh.breached, lh.appended)
     print(rh.reset, rh.breached, rh.appended)
     print(frame.lane.ndirect,frame.lane.nskipped, frame.lane.count)
