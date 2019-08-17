@@ -40,20 +40,7 @@ classes = [#
     'teddy bear','hair drier','toothbrush' ]
 
 
-def compute_hls_white_yellow_binary(image,kernel_size =3):
-    """
-    Returns a binary thresholded image produced retaining only white and yellow elements on the picture
-    The provided image should be in RGB formats
-    """
-    converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
-    lower = np.uint8([ 20, 50,   40])
-    upper = np.uint8([35, 255, 255])
-    yellow_mask = cv2.inRange(converted, lower, upper)   
-    lower = np.uint8([ 0, 200,   0])
-    upper = np.uint8([180, 255, 100])
-    white_mask = cv2.inRange(converted, lower, upper)
-    mask = cv2.bitwise_or(white_mask, yellow_mask)
-    return mask
+
 
 
 def create_queue(length = 10):
@@ -227,11 +214,18 @@ class LANE_DETECTION:
     real_world_lane_size_meters=(32, 3.7)
     ego_vehicle_in_frame=False
     font = cv2.FONT_HERSHEY_SIMPLEX
-    def __init__(self,  img,fps ):
+    def __init__(self,  img,fps,
+            yellow_lower = np.uint8([ 20, 50,   40]),yellow_upper = np.uint8([35, 255, 255]),
+            white_lower = np.uint8([ 0, 200,   0]), white_upper = np.uint8([180, 255, 100]), lane_start=[0.25,0.75] ):
         self.objpts = None
         self.fps=int(fps)
         self.imgpts = None
         self.lane_roi = None
+        ## LANE DETECTION PROPERTIES
+        self.yellow_lower =  yellow_lower
+        self.yellow_upper =  yellow_upper
+        self.white_lower =  white_lower
+        self.white_upper = white_upper 
         # IMAGE PROPERTIES
         self.image =  img
         self.font_sz = 4e-4 * self.image.shape[0]
@@ -247,7 +241,7 @@ class LANE_DETECTION:
         self.lanebola = -50*x*(x-self.window_half_width*2)
         self.leftx = create_queue(self.fps//4)
         self.rightx = create_queue(self.fps//4)
-        self.calc_perspective()
+        self.calc_perspective(lane_start=lane_start)
         self.ndirect = 0
         self.skipdirect =  True
         self.nskipped = 0
@@ -272,8 +266,18 @@ class LANE_DETECTION:
         self.message = ""
         self.count =  0
 
+    def compute_mask(self, image):
+        """
+        Returns a binary thresholded image produced retaining only white and yellow elements on the picture
+        The provided image should be in RGB formats
+        """
+        converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
+        yellow_mask = cv2.inRange(converted, self.yellow_lower, self.yellow_upper)   
+        white_mask = cv2.inRange(converted, self.white_lower, self.white_upper)
+        mask = cv2.bitwise_or(white_mask, yellow_mask)
+        return mask
 
-    def calc_perspective(self, verbose =  True):
+    def calc_perspective(self, verbose =  True, lane_start=[0.25,0.75]):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
         roi_points = np.array([[self.img_dimensions[1]//7, self.img_dimensions[0]],
                     [self.img_dimensions[1]*6/7, self.img_dimensions[0]],
@@ -334,11 +338,11 @@ class LANE_DETECTION:
         self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
         min_wid = 1000
         img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
-        mask = compute_hls_white_yellow_binary(img) 
+        mask = self.compute_mask(img) 
 
         x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
-        x1 = int(self.UNWARPED_SIZE[0]*.25)
-        x2 = int(self.UNWARPED_SIZE[0]*.75) 
+        x1 = int(self.UNWARPED_SIZE[0]*lane_start[0])
+        x2 = int(self.UNWARPED_SIZE[0]*lane_start[1]) 
         x1 = x1-self.window_half_width + self.detect_lane_start(mask[:,x1-self.window_half_width :x1+self.window_half_width])
         x2 = x2-self.window_half_width + self.detect_lane_start(mask[:,x2-self.window_half_width :x2+self.window_half_width])
         self.leftx.append(x1)
@@ -633,7 +637,7 @@ class LANE_DETECTION:
         """
         left_line = self.previous_left_lane_line
         right_line = self.previous_right_lane_line
-        undst_img = compute_hls_white_yellow_binary(img)
+        undst_img = self.compute_mask(img)
         undst_img  = undst_img * self.lane_roi 
         warped_img = cv2.warpPerspective(undst_img, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))
        
