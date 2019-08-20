@@ -352,6 +352,7 @@ def do_nms(boxes, nms_thresh):
                     boxes[index_j].classes[c] = 0
                     to_del.append(index_j)
                     # del boxes[index_j]
+    to_del = list(dict.fromkeys(to_del))
     to_del.sort(reverse=True)
     for elem in to_del:
         del boxes[elem]
