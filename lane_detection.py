@@ -18,7 +18,7 @@ DARK_BLUE = (139, 0, 0)
 GRAY = (128, 128, 128)
 RED = (0,0,255)
 ORANGE =(0,165,255)
-
+BLACK =(0,0,0)
 vehicles = [1,2,3,5,6,7,8]
 animals =[15,16,17,18,19,21,22,23,]
 humans =[0]
@@ -277,7 +277,7 @@ class LANE_DETECTION:
         l_rel =  max(min((avg/110)**3.0,1.1),0.5)
         self.yellow_lower[1] = int(l_rel*50)
         self.white_lower[1] = int(l_rel *180)
-        print("LUM ",int(avg), " | factor ",l_rel, self.white_lower)
+        # print("LUM ",int(avg), " | factor ",l_rel, self.white_lower)
         # plt.imshow(image)
         # plt.show()
         return
@@ -304,8 +304,8 @@ class LANE_DETECTION:
                     [self.img_dimensions[1]*15//23,self.img_dimensions[0]*13//23],
                     [self.img_dimensions[1]*9//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
-        x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
-        grad= np.tile(-5*x*(x-self.img_dimensions[1]),self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
+        # x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
+        # grad= np.tile(-5*x*(x-self.img_dimensions[1]),self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
 
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
         Lhs = np.zeros((2,2), dtype= np.float32)
@@ -362,7 +362,7 @@ class LANE_DETECTION:
         img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
         mask = self.compute_mask(img) 
         
-        x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
+        # x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
         x1 = int(self.UNWARPED_SIZE[0]*lane_start[0])
         x2 = int(self.UNWARPED_SIZE[0]*lane_start[1]) 
         span = self.UNWARPED_SIZE[0]//5 
@@ -487,45 +487,47 @@ class LANE_DETECTION:
         rl.purge_points(self.UNWARPED_SIZE[1])
         out_img = np.dstack((thres_img_psp,thres_img_psp,thres_img_psp))
         img = self.draw_lane_area(out_img, img, ll, rl)  
-        if self.verbose : 
-            lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
-            drawn_lines = self.draw_lane_lines(out_img, ll, rl)        
-            drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
-            drawn_hotspots = self.draw_lines_hotspots(out_img, ll, rl, obstacles)
-            img = self.combine_images(img, drawn_lines, drawn_lines_regions,drawn_hotspots, img)
-            img = self.draw_lane_curvature_text(img, lcr, rcr, lco)
-        self.total_img_count += 1
         self.previous_left_lane_line = ll
         self.previous_right_lane_line = rl
+        lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
+        if self.verbose : 
+            
+            drawn_lines = self.draw_lane_lines(out_img, ll, rl)        
+            # drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
+            drawn_hotspots = self.draw_lines_hotspots(out_img, ll, rl, obstacles)
+            img = self.combine_images(img, drawn_lines,drawn_hotspots)
+            img = self.draw_lane_curvature_text(img, lcr, rcr, lco)
+        self.total_img_count += 1
+        
         return img
     
     def draw_lane_curvature_text(self, img, left_curvature_meters, right_curvature_meters, center_offset_meters):
         """
         Returns an image with curvature information inscribed
         """
-        
+        sz = self.font_sz*3
         offset_y = self._pip_size[1] * 1 + self._pip__y_offset * 5
         offset_x = self._pip__x_offset
         
         template = "{0:17}{1:17}{2:17}"
-        txt_header = template.format("Left Curvature", "Right Curvature", "Center Alignment") 
+        txt_header = template.format("Left ", "Right ", "Center") 
         # print(txt_header)
         txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
                                      "{:.0f}m".format(right_curvature_meters),
                                      "{:.2f}m Right".format(center_offset_meters))
         if center_offset_meters < 0.0:
-            txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
-                                     "{:.0f}m".format(right_curvature_meters),
-                                     "{:.2f}m Left".format(math.fabs(center_offset_meters)))
+            txt_values = template.format("{:0f}m".format(left_curvature_meters), 
+                                     "{:0f}m".format(right_curvature_meters),
+                                     "{:.1f}m Left".format(math.fabs(center_offset_meters)))
             
         
 
-        cv2.putText(img, txt_header, (offset_x, offset_y), self.font, 1, (255,255,255), 1, cv2.LINE_AA)
-        cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 5), self.font, 1, (255,255,255), 2, cv2.LINE_AA)
-        cv2.putText(img, self.message, (offset_x, self.img_dimensions[0]-10), self.font, 1, (255,0,0), 1, cv2.LINE_AA)
+        cv2.putText(img, txt_header, (offset_x, offset_y), self.font, sz, BLACK, 1, cv2.LINE_AA)
+        cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 2), self.font, sz, BLACK, 2, cv2.LINE_AA)
+        cv2.putText(img, self.message, (offset_x, self.img_dimensions[0]-10), self.font, sz, WHITE, 1, cv2.LINE_AA)
         return img
     
-    def combine_images(self, lane_area_img, lines_img, lines_regions_img,lane_hotspots_img, psp_color_img):        
+    def combine_images(self, lane_area_img, lines_img,lane_hotspots_img):        
         """
         Returns a new image made up of the lane area image, and the remaining lane images are overlaid as
         small images in a row at the top of the the new image
@@ -533,23 +535,23 @@ class LANE_DETECTION:
 
      
         small_lines = cv2.resize(lines_img, self._pip_size)
-        small_region = cv2.resize(lines_regions_img, self._pip_size)
+        # small_region = cv2.resize(lines_regions_img, self._pip_size)
         small_hotspots = cv2.resize(lane_hotspots_img, self._pip_size)
-        small_color_psp = cv2.resize(psp_color_img, self._pip_size)
+        # small_color_psp = cv2.resize(psp_color_img, self._pip_size)
                 
         lane_area_img[self._pip__y_offset: self._pip__y_offset + self._pip_size[1], self._pip__x_offset: self._pip__x_offset + self._pip_size[0]] = small_lines
         
-        start_offset_y = self._pip__y_offset 
-        start_offset_x = 2 * self._pip__x_offset + self._pip_size[0]
-        lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_region
+        # start_offset_y = self._pip__y_offset 
+        # start_offset_x = 2 * self._pip__x_offset + self._pip_size[0]
+        # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_region
         
         start_offset_y = self._pip__y_offset 
-        start_offset_x = 3 * self._pip__x_offset + 2 * self._pip_size[0]
+        start_offset_x = 2 * self._pip__x_offset + 1 * self._pip_size[0]
         lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_hotspots
 
-        start_offset_y = self._pip__y_offset 
-        start_offset_x = 4 * self._pip__x_offset + 3 * self._pip_size[0]
-        lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:] = small_color_psp
+        # start_offset_y = self._pip__y_offset 
+        # start_offset_x = 4 * self._pip__x_offset + 3 * self._pip_size[0]
+        # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:] = small_color_psp
         
         
         return lane_area_img
@@ -621,6 +623,7 @@ class LANE_DETECTION:
         identified by our pipeline are colored in yellow (left) and blue (right)
         """
         # out_img = np.dstack((warped_img, warped_img, warped_img))*255
+        sz = self.font_sz*12
         out_img = img.copy()
         for i in range(len(left_line.non_zero_x)) :
             cv2.circle( out_img,( left_line.non_zero_x[i],-left_line.non_zero_y[i]), 5, (255, 255, 0), -1)
@@ -630,7 +633,7 @@ class LANE_DETECTION:
         cv2.line(out_img, (int(np.average(self.rightx)), 0), (int(np.average(self.rightx)), self.UNWARPED_SIZE[1]), (0, 0, 255), 4)
         for i in range(len(obstacles)):
             box =  obstacles[i]
-            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, 10, (255,255,255), 1, cv2.LINE_AA)    
+            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)    
         return out_img
 
     def compute_lane_curvature(self, left_line, right_line):
@@ -638,17 +641,36 @@ class LANE_DETECTION:
         Returns the triple (left_curvature, right_curvature, lane_center_offset), which are all in meters
         """        
         y_eval = -np.max(self.ploty)
-        # leftx = left_line.line_fit_x00000000
-        # rightx = right_line.line_fit_x
         left_fit = self.left_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
         right_fit =self.right_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
         left_curverad = int((1 + (2 * left_fit[0] * y_eval * self.ym_per_px + left_fit[1])**2)**1.5) / np.absolute(2 * left_fit[0])
         right_curverad = int((1 + (2 *right_fit[0] * y_eval * self.ym_per_px + right_fit[1])**2)**1.5) / np.absolute(2 * right_fit[0])
         # left_fit = left_line.polynomial_coeff
         # right_fit = right_line.polynomial_coeff
-        
+        half_width  =    int(np.mean(self.rightx) -np.mean(self.leftx))//2
         center_offset_img_space = (((left_fit[0] * y_eval**2 + left_fit[1] * y_eval + left_fit[2]) + 
                    (right_fit[0] * y_eval**2 + right_fit[1] * y_eval + right_fit[2])) / 2) - self.vanishing_point[0]
+
+        if abs(center_offset_img_space) > half_width :
+            if center_offset_img_space < 0:
+                print("LANE CHANGE TO RIGHT")
+                self.left_line_history = self.right_line_history
+                self.previous_left_lane_line  = self.previous_right_lane_line
+                self.right_line_history = LANE_HISTORY(test_points = self.left_line_history.test_points, queue_depth=self.left_line_history.max_lost_count, ploty = self.ploty)
+                self.previous_right_lane_line =  LANE_LINE()
+                self.leftx =  self.rightx
+                self.rightx  =  create_queue(length = self.leftx.maxlen)
+                self.rightx.append(np.mean(self.leftx) +  2*half_width)
+            else:
+                print("LANE CHANGE TO LEFT")
+                self.right_line_history = self.left_line_history
+                self.previous_right_lane_line  = self.previous_left_lane_line
+                self.left_line_history = LANE_HISTORY(test_points = self.right_line_history.test_points, queue_depth=self.right_line_history.max_lost_count, ploty = self.ploty)
+                self.previous_left_lane_line =  LANE_LINE()
+                self.rightx =  self.leftx
+                self.leftx  =  create_queue(length = self.rightx.maxlen)
+                self.leftx.append(np.mean(self.rightx) -  2*half_width)
+            self.previous_centers = np.ones(self.windows_per_line)*(np.mean(self.leftx)+np.mean(self.rightx))//2
         center_offset_real_world_m = int(center_offset_img_space * self.xm_per_px*100)/100.0       
 
         return left_curverad, right_curverad, center_offset_real_world_m

@@ -220,7 +220,7 @@ if __name__ == "__main__":
     frame = FRAME(image=image, fps =  fps, verbose =  True)
     frames = nb_frames
     t0  = 180 #0  # sec
-    t1 =  250 # frames/fps #sec
+    t1 =  2000 # frames/fps #sec
     dur = t1 -t0
     video_reader.set(1,t0*fps)
     start = datetime.utcnow().timestamp()
