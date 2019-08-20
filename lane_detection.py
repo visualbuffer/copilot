@@ -251,7 +251,6 @@ class LANE_DETECTION:
         self.rightx = create_queue(self.fps//4)
         self.calc_perspective(lane_start=lane_start)
         self.ndirect = 0
-        self.skipdirect =  True
         self.nskipped = 0
         self.s = 0
         self.coef = np.array([1,1,1])
@@ -736,118 +735,80 @@ class LANE_DETECTION:
         leftx_current = int(np.mean(self.leftx))
         rightx_current = int(np.mean(self.rightx))
         lane_width= int(rightx_current - leftx_current)                
-        # if len(self.previous_left_lane_line.windows) > 0 and len(self.previous_right_lane_line.windows) >0:
-        #     left_lane_inds = ((nonzerox > (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-        #                                    - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
-        #                                    + self.previous_left_lane_line.polynomial_coeff[2] - margin15)) 
-        #                       & (nonzerox < (self.previous_left_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-        #                                     - self.previous_left_lane_line.polynomial_coeff[1] * nonzeroy 
-        #                                     + self.previous_left_lane_line.polynomial_coeff[2] + margin15))) 
-
-        #     right_lane_inds = ((nonzerox > (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-        #                                    - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
-        #                                    + self.previous_right_lane_line.polynomial_coeff[2] - margin15)) 
-        #                       & (nonzerox < (self.previous_right_lane_line.polynomial_coeff[0] * (nonzeroy**2) 
-        #                                     - self.previous_right_lane_line.polynomial_coeff[1] * nonzeroy 
-        #                                     + self.previous_right_lane_line.polynomial_coeff[2] + margin15))) 
+        centerx_current = leftx_current + lane_width//2
+        # print("Non zeros found below thresholds, begining sliding window - pct={0}".format(non_zero_found_pct))
+        left_lane_inds = []
+        right_lane_inds = []
+        centers = []
+        center_idx = []
+        all_centers = []
+        leftx =[leftx_current]
+        rightx =[rightx_current]
+        lefty =[-(warped_img.shape[0] - self.windows_range[0] * window_height)]
+        righty =[-(warped_img.shape[0] - self.windows_range[0]* window_height)]
+        # left_line = LANE_LINE()
+        # right_line = LANE_LINE()
+        curve_compute =  0
+        self.s =  0 
+        
+        for window in self.windows_range:
+            win_y_low = warped_img.shape[0] - (window + 1)* window_height
+            win_y_high = warped_img.shape[0] - window * window_height
+            win_xleft_low = leftx_current - margin
+            win_xleft_high = leftx_current + margin
+            win_xright_low = rightx_current - margin
+            win_xright_high = rightx_current + margin
             
-        #     non_zero_found_left = np.sum(left_lane_inds)
-        #     non_zero_found_right = np.sum(right_lane_inds)
-        #     non_zero_found_pct = (non_zero_found_left + non_zero_found_right) / total_non_zeros
-        #     # print("[Previous lane] Found pct={0}".format(non_zero_found_pct),non_zero_found_left , non_zero_found_right,total_non_zeros)
-        #     self.message += "| PCT "+ str(non_zero_found_pct)+" "
-        if (non_zero_found_pct < 2) or (self.skipdirect):
-            self.skipdirect = False
-            # window_count = 0 
-            centerx_current = leftx_current + lane_width//2
-            # print("Non zeros found below thresholds, begining sliding window - pct={0}".format(non_zero_found_pct))
-            left_lane_inds = []
-            right_lane_inds = []
-            centers = []
-            center_idx = []
-            all_centers = []
-            leftx =[leftx_current]
-            rightx =[rightx_current]
-            lefty =[-(warped_img.shape[0] - self.windows_range[0] * window_height)]
-            righty =[-(warped_img.shape[0] - self.windows_range[0]* window_height)]
-            # left_line = LANE_LINE()
-            # right_line = LANE_LINE()
-            curve_compute =  0
-            self.s =  0 
+            # if (win_xleft_low > 0) & (win_xleft_high < warped_img.shape[1]) & doleft:
+            left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
+            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+                        (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
+            right_line.windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])            
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
+                (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
+            centerx =np.array([])
+
+            s = 0
+            if len(good_left_inds) > minpix:
+                x = mode(nonzerox[good_left_inds])[0]
+                y = mode(nonzeroy[good_left_inds])[0]
+                leftx.extend(x)
+                lefty.extend(-y)
+                s +=1
+                centerx = x + lane_width//2
+                rightx.extend(x + lane_width)
+                righty.extend(-y)
+                # centery = nonzeroy[good_left_inds]
+            if len(good_right_inds) > minpix:
+                s += 1
+                x = mode(nonzerox[good_right_inds])[0]
+                y = mode(nonzeroy[good_right_inds])[0]
+
+                rightx.extend(x)
+                righty.extend(-y)
+                centerx = np.append(centerx, x-lane_width//2)
+                leftx.extend(x - lane_width)
+                lefty.extend(-y)
+
+
+            self.s += s > 0
             
-            for window in self.windows_range:
-                win_y_low = warped_img.shape[0] - (window + 1)* window_height
-                win_y_high = warped_img.shape[0] - window * window_height
-                win_xleft_low = leftx_current - margin
-                win_xleft_high = leftx_current + margin
-                win_xright_low = rightx_current - margin
-                win_xright_high = rightx_current + margin
-                
-                # if (win_xleft_low > 0) & (win_xleft_high < warped_img.shape[1]) & doleft:
-                left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
-                good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
-                            (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
-                right_line.windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])            
-                good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
-                    (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
-                centerx =np.array([])
-
-                s = 0
-                if len(good_left_inds) > minpix:
-                    x = mode(nonzerox[good_left_inds])[0]
-                    y = mode(nonzeroy[good_left_inds])[0]
-                    leftx.extend(x)
-                    lefty.extend(-y)
-                    s +=1
-                    centerx = x + lane_width//2
-                    rightx.extend(x + lane_width)
-                    righty.extend(-y)
-                    # centery = nonzeroy[good_left_inds]
-                if len(good_right_inds) > minpix:
-                    s += 1
-                    x = mode(nonzerox[good_right_inds])[0]
-                    y = mode(nonzeroy[good_right_inds])[0]
-
-                    rightx.extend(x)
-                    righty.extend(-y)
-                    centerx = np.append(centerx, x-lane_width//2)
-                    leftx.extend(x - lane_width)
-                    lefty.extend(-y)
-
-    
-                self.s += s > 0
-                
-                if s > 0:    
-                    centerx_current = int(np.average(centerx))
-                    centers.append(centerx_current)
-                    center_idx.append(window)
+            if s > 0:    
+                centerx_current = int(np.average(centerx))
+                centers.append(centerx_current)
+                center_idx.append(window)
+            else :
+                if len(center_idx) > 5 :
+                    if curve_compute% 5 == 0 :
+                        self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
+                    centerx_current = int(np.polyval(self.coef, window+1))
+                    curve_compute += 1
                 else :
-                    if len(center_idx) > 5 :
-                        if curve_compute% 5 == 0 :
-                            self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
-                        centerx_current = int(np.polyval(self.coef, window+1))
-                        curve_compute += 1
-                    else :
-                        centerx_current = self.previous_centers[window-self.window_offset]
-                all_centers.append(centerx_current)
-                leftx_current = int(centerx_current -lane_width/2)
-                rightx_current = int(centerx_current +lane_width/2)
-                margin =  int(margin * self.margin_red)
-        else :
-            x =  np.arange(len(right_lane_inds))
-            right_lane_inds  =  x[right_lane_inds]
-            x = np.arange(len(left_lane_inds))
-            left_lane_inds = x[left_lane_inds] 
-            leftx = np.array(nonzerox[left_lane_inds])
-            lefty = -1*np.array(nonzeroy[left_lane_inds] )
-            rightx = np.array(nonzerox[right_lane_inds])
-            righty = -1* np.array(nonzeroy[right_lane_inds])
-            leftx = np.concatenate((leftx, rightx-lane_width)) 
-            lefty= np.concatenate((lefty, righty)) 
-            rightx= np.concatenate((rightx, leftx+lane_width)) 
-            righty= np.concatenate((righty, lefty)) 
-            self.ndirect +=1
-            self.skipdirect = self.ndirect%2 == 0
+                    centerx_current = self.previous_centers[window-self.window_offset]
+            all_centers.append(centerx_current)
+            leftx_current = int(centerx_current -lane_width/2)
+            rightx_current = int(centerx_current +lane_width/2)
+            margin =  int(margin * self.margin_red)
         if (self.s <= 5) and (not self.lane_change):
             self.previous_left_lane_line.windows = []
             self.previous_right_lane_line.windows = []

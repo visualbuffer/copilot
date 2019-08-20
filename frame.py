@@ -210,7 +210,7 @@ if __name__ == "__main__":
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output10.mov"
+    video_out = "videos/output20.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
     pers_frame_time = 180# seconds
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     frame = FRAME(image=image, fps =  fps, verbose =  True)
     frames = nb_frames
     t0  = 180 #0  # sec
-    t1 =  2000 # frames/fps #sec
+    t1 =  200 # frames/fps #sec
     dur = t1 -t0
     video_reader.set(1,t0*fps)
     start = datetime.utcnow().timestamp()
