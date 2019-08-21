@@ -7,20 +7,6 @@ import numpy as np
 import cv2
 from datetime import datetime
  
-class TRAFFIC_LIGHTS(OBSTACLE) :
-  def __init__(self) :
-    return None
-  
-  def detect_status(self):
-    return None
-    
-class TRAFFIC_SIGNS(OBSTACLE):
-  def __init__(self) :
-    return None
-  
-  def decipher(self):
-    return None
-
 
 class FRAME :
     fps:float
