@@ -50,7 +50,7 @@ class FRAME :
       
         "LANE_WIDTH" :  3.66,
         "fps" :22,
-        'verbose' :  True
+        'verbose' :  3
         }
     
     @classmethod
@@ -148,7 +148,6 @@ class FRAME :
         for n, obs in enumerate(self.obstacles):
 
             success, corwh = obs.tracker.update(image)
-            # print("tracking", corwh ,  self.obstacles[n].xmin,self.obstacles[n].ymin,self.obstacles[n].xmax,self.obstacles[n].ymax)
             if not success :
                 del self.obstacles[n]
 
@@ -203,37 +202,37 @@ class FRAME :
         
 if __name__ == "__main__":
     from tqdm import tqdm
-    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
+    
     # video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
-    video_reader =  cv2.VideoCapture("videos/nice_road.mp4") 
+    video_reader =  cv2.VideoCapture("videos/nice_road.mp4")
+    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output20.mov"
-    # cv2.VideoWriter_fourcc(*'MPEG')
+    video_out = "videos/output21.mov"
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
     pers_frame_time = 180# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
-    frame = FRAME(image=image, fps =  fps, verbose =  True)
+    frame = FRAME(image=image, fps =  fps, verbose =  3)
     frames = nb_frames
-    t0  = 180 #0  # sec
-    t1 =  200 # frames/fps #sec
+    t0  =180  # sec
+    t1 = 600# int(frames/fps) #sec
     dur = t1 -t0
     video_reader.set(1,t0*fps)
     start = datetime.utcnow().timestamp()
-    for i in tqdm(range(int(t0*fps), int(t1*fps))):
+    for i in tqdm(range(int(t0*fps), int(t1*fps)),mininterval=2):
         status, image = video_reader.read()
         if  status :
             try : 
                 procs_img = frame.process_and_plot(image)
                 video_writer.write(procs_img) 
             except :
-                print("TGO EXEPTION TO PROCES THE IMAGE")
+                print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", frame.count)
     stop =datetime.utcnow().timestamp()
-    print(stop - start, "[s] Processing time for ", dur, " [s] at ", fps, " FPS")
+    print(stop - start, "[s] Processing time for ", dur, " [s] at ", fps, " FPS. Saved as",video_out )
     lh = frame.lane.left_line_history
     rh = frame.lane.right_line_history
     print(lh.reset, lh.breached, lh.appended)
