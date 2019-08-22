@@ -39,7 +39,7 @@ class FRAME :
     camera : CAMERA
     yolo : classmethod
     PERSP_PERIOD =  100000
-    YOLO_PERIOD = 1 # SECONDS
+    YOLO_PERIOD = 2 # SECONDS
     _defaults = {
         "id": 0,
         "first": True,
@@ -203,14 +203,14 @@ class FRAME :
 if __name__ == "__main__":
     from tqdm import tqdm
     
-    # video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
+
     video_reader =  cv2.VideoCapture("videos/nice_road.mp4")
-    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
+    # video_reader =  cv2.VideoCapture("videos/nh60.mp4")
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output21.mov"
+    video_out = "videos/output30.mov"
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
     pers_frame_time = 180# seconds
     pers_frame = int(pers_frame_time *fps)
@@ -219,20 +219,21 @@ if __name__ == "__main__":
     frame = FRAME(image=image, fps =  fps, verbose =  3)
     frames = nb_frames
     t0  =180  # sec
-    t1 = 600# int(frames/fps) #sec
+    t1 = 200#int(frames/fps) #sec
     dur = t1 -t0
     video_reader.set(1,t0*fps)
     start = datetime.utcnow().timestamp()
     for i in tqdm(range(int(t0*fps), int(t1*fps)),mininterval=2):
-        status, image = video_reader.read()
-        if  status :
-            try : 
-                procs_img = frame.process_and_plot(image)
-                video_writer.write(procs_img) 
-            except :
-                print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", frame.count)
+        # if i % 2 == 0 :
+            status, image = video_reader.read()
+            if  status :
+                try : 
+                    procs_img = frame.process_and_plot(image)
+                    video_writer.write(procs_img) 
+                except :
+                    print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", frame.count)
     stop =datetime.utcnow().timestamp()
-    print(stop - start, "[s] Processing time for ", dur, " [s] at ", fps, " FPS. Saved as",video_out )
+    print(stop - start, "[s] Processing time for ", dur, " [s] at ", frame.fps, " FPS. Saved as",video_out )
     lh = frame.lane.left_line_history
     rh = frame.lane.right_line_history
     print(lh.reset, lh.breached, lh.appended)

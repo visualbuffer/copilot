@@ -149,17 +149,6 @@ class LANE_HISTORY:
     def addlane(self, lane_line :LANE_LINE,):
         status = "APPENDED | "   
         lane_line.fitpoly(P0 = self.smoothed_poly ) 
-        # dist = abs( np.polyval(self.smoothed_poly,-self.ploty[-1]) - np.polyval(lane_line.polynomial_coeff, -self.ploty[-1]) )
-        # skip =  dist  >  self.poly_max_deviation_distance 
-        # if skip and (self.fitx is not None) :
-        #     status = "SKP_BRCH | "
-        #     lane_line.polynomial_coeff = self.smoothed_poly
-        #     lane_line.line_fit_x =  self.fitx
-        #     self.lost =  True
-        #     self.lost_count += 1 
-        #     self.breached +=1
-        #     return False , status, lane_line 
-
         if  (len(self.lane_lines) == 0 or (self.lost_count > self.max_lost_count )) :  
             status ="RESET | "
             self.lane_lines.append(lane_line)
@@ -243,14 +232,13 @@ class LANE_DETECTION:
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
         self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.15)
-        self.window_half_width = int(self.img_dimensions[1]*0.075)
-
+        self.margin = int(self.img_dimensions[1]*0.075)
+        self.window_height = np.int(self.UNWARPED_SIZE[1]//self.windows_per_line)
         x =  np.linspace(0,self.img_dimensions[1]-1, self.img_dimensions[1])
         self.parabola = -200*x*(x-self.img_dimensions[1])
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
-        self.sliding_window_recenter_thres=9
-        # x =  np.linspace(0, self.window_half_width*2-1, self.window_half_width*2)
-        # self.lanebola = -50*x*(x-self.window_half_width*2)
+        self.minpix=self.window_height
+        self.maxpix = int(self.margin * self.window_height *0.5)
         self.leftx = create_queue(self.fps//4)
         self.rightx = create_queue(self.fps//4)
         self.calc_perspective(lane_start=lane_start)
@@ -272,13 +260,13 @@ class LANE_DETECTION:
         self.left_line_history = LANE_HISTORY(test_points = test, queue_depth=self.fps//3, ploty = self.ploty)
         self.right_line_history = LANE_HISTORY(test_points = test, queue_depth=self.fps//3, ploty = self.ploty)
         self.total_img_count = 0
-        self.margin_red = 1# .995
+        # self.self.margin_red = 1# .995
         
         
 
     def compute_bounds(self, image):
         avg = np.average(image[image.shape[0]//4:image.shape[0]*3//4,image.shape[1]*2//3 : image.shape[1],1])
-        l_rel =  max(min((avg/100)**3.0,1.35),0.5)
+        l_rel =  max(min((avg/150)**3.0,1.35),0.5)
         self.yellow_lower[1] = int(l_rel*50)
         self.white_lower[1] = int(l_rel *180)
         self.message = self.message+"WHITE" + str(self.white_lower[1])
@@ -416,9 +404,9 @@ class LANE_DETECTION:
             right= np.polyval(self.right_line_history.smoothed_poly ,box.y) - box.x
             status = "my"
             if left < 0 and right <0:
-                status = "left"
-            elif right>0 and left >0 :
                 status = "right"
+            elif right>0 and left >0 :
+                status = "left"
             box.lane = status
             dst =  np.array([dst[0]/self.px_per_xm,(self.UNWARPED_SIZE[1]-dst[1])/self.px_per_ym])
             box.update_obstacle(dst,self.fps)
@@ -603,16 +591,16 @@ class LANE_DETECTION:
         Returns an image where the computed left and right lane areas have been drawn on top of the original warped binary image
         """
         warped_img = img.copy()
-        margin = self.window_half_width
+        self.margin = self.margin
 
         
-        left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - margin, self.ploty]))])
-        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_line.line_fit_x + margin, 
+        left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - self.margin, self.ploty]))])
+        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_line.line_fit_x + self.margin, 
                                       self.ploty])))])
         left_line_pts = np.hstack((left_line_window1, left_line_window2))
         
-        right_line_window1 = np.array([np.transpose(np.vstack([right_line.line_fit_x - margin, self.ploty]))])
-        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x + margin, 
+        right_line_window1 = np.array([np.transpose(np.vstack([right_line.line_fit_x - self.margin, self.ploty]))])
+        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x + self.margin, 
                                       self.ploty])))])
         right_line_pts = np.hstack((right_line_window1, right_line_window2))
         cv2.fillPoly(warped_img, np.int_([left_line_pts]), (0, 255, 0))
@@ -647,8 +635,8 @@ class LANE_DETECTION:
         y_eval = -np.max(self.ploty)
         left_fit = self.left_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
         right_fit =self.right_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
-        left_curverad = int((1 + (2 * left_fit[0] * y_eval * self.ym_per_px + left_fit[1])**2)**1.5) / np.absolute(2 * left_fit[0])
-        right_curverad = int((1 + (2 *right_fit[0] * y_eval * self.ym_per_px + right_fit[1])**2)**1.5) / np.absolute(2 * right_fit[0])
+        left_curverad = int(((1 + (2 * left_fit[0] * y_eval * self.ym_per_px + left_fit[1])**2)**1.5) / np.absolute(2 * left_fit[0]))
+        right_curverad = int(((1 + (2 *right_fit[0] * y_eval * self.ym_per_px + right_fit[1])**2)**1.5) / np.absolute(2 * right_fit[0]))
         # left_fit = left_line.polynomial_coeff
         # right_fit = right_line.polynomial_coeff
         half_width  =    int(np.mean(self.rightx) -np.mean(self.leftx))//2
@@ -700,15 +688,15 @@ class LANE_DETECTION:
         pp_img = cv2.warpPerspective(undst_img, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))
         warped_img = self.compute_mask(pp_img)
 
-        margin = self.window_half_width
-        minpix = self.sliding_window_recenter_thres
-        window_height = np.int(warped_img.shape[0]//self.windows_per_line)
+        self.margin = self.margin
+
+        
         x1_av =  int(np.average(self.leftx))
         x2_av  = int(np.average(self.rightx))
-        x1 = min(max(x1_av,self.window_half_width), self.UNWARPED_SIZE[0]-self.window_half_width*2)
-        x2 = max( min(x2_av,self.UNWARPED_SIZE[0]-self.window_half_width-1), x1+self.window_half_width*2)
-        leftx_base = x1-self.window_half_width + self.detect_lane_start(warped_img[:,x1-self.window_half_width :x1+self.window_half_width])
-        rightx_base = x2-self.window_half_width + self.detect_lane_start(warped_img[:,x2-self.window_half_width :x2+self.window_half_width])
+        x1 = min(max(x1_av,self.margin), self.UNWARPED_SIZE[0]-self.margin*2)
+        x2 = max( min(x2_av,self.UNWARPED_SIZE[0]-self.margin-1), x1+self.margin*2)
+        leftx_base = x1-self.margin + self.detect_lane_start(warped_img[:,x1-self.margin :x1+self.margin])
+        rightx_base = x2-self.margin + self.detect_lane_start(warped_img[:,x2-self.margin :x2+self.margin])
         nonzero = warped_img.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])  
@@ -716,9 +704,9 @@ class LANE_DETECTION:
             and (rightx_base - leftx_base < self.UNWARPED_SIZE[0]//2)\
                 and (not self.lane_change)\
                     and  (leftx_base > 0):
-            if abs(x1_av - leftx_base) < margin : 
+            if abs(x1_av - leftx_base) < self.margin : 
                 self.leftx.append(leftx_base)
-            if abs(x2_av - rightx_base) < margin : 
+            if abs(x2_av - rightx_base) < self.margin : 
                 self.rightx.append(rightx_base)
         leftx_current = int(np.mean(self.leftx))
         rightx_current = int(np.mean(self.rightx))
@@ -735,18 +723,18 @@ class LANE_DETECTION:
 
         # leftx =[leftx_current]
         # rightx =[rightx_current]
-        # lefty =[-(warped_img.shape[0] - self.windows_range[0] * window_height)]
-        # righty =[-(warped_img.shape[0] - self.windows_range[0]* window_height)]
+        # lefty =[-(warped_img.shape[0] - self.windows_range[0] * self.window_height)]
+        # righty =[-(warped_img.shape[0] - self.windows_range[0]* self.window_height)]
         curve_compute =  0
         self.max_gap =  0 
         gap  = 0
         for window in self.windows_range:
-            win_y_low = warped_img.shape[0] - (window + 1)* window_height
-            win_y_high = warped_img.shape[0] - window * window_height
-            win_xleft_low = leftx_current - margin
-            win_xleft_high = leftx_current + margin
-            win_xright_low = rightx_current - margin
-            win_xright_high = rightx_current + margin
+            win_y_low = warped_img.shape[0] - (window + 1)* self.window_height
+            win_y_high = warped_img.shape[0] - window * self.window_height
+            win_xleft_low = leftx_current - self.margin
+            win_xleft_high = leftx_current + self.margin
+            win_xright_low = rightx_current - self.margin
+            win_xright_high = rightx_current + self.margin
             
             # if (win_xleft_low > 0) & (win_xleft_high < warped_img.shape[1]) & doleft:
             left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
@@ -758,7 +746,7 @@ class LANE_DETECTION:
             centerx =np.array([])
 
             s = 0
-            if len(good_left_inds) > minpix:
+            if (len(good_left_inds) > self.minpix) and (len(good_left_inds) < self.maxpix):
                 x = mode(nonzerox[good_left_inds])[0]
                 y = mode(nonzeroy[good_left_inds])[0]
                 leftx.extend(x)
@@ -768,7 +756,7 @@ class LANE_DETECTION:
                 rightx.extend(x + lane_width)
                 righty.extend(-y)
                 # centery = nonzeroy[good_left_inds]
-            if len(good_right_inds) > minpix:
+            if (len(good_right_inds) > self.minpix) and  (len(good_right_inds) < self.maxpix):
                 s += 1
                 x = mode(nonzerox[good_right_inds])[0]
                 y = mode(nonzeroy[good_right_inds])[0]
@@ -801,8 +789,8 @@ class LANE_DETECTION:
             all_centers.append(centerx_current)
             leftx_current = int(centerx_current -lane_width/2)
             rightx_current = int(centerx_current +lane_width/2)
-            margin =  int(margin * self.margin_red)
-        if (self.max_gap > self.windows_per_line//2) and (not self.lane_change):
+         
+        if (self.max_gap > self.windows_per_line*2//5) and (not self.lane_change):
             self.previous_left_lane_line.windows = []
             self.previous_right_lane_line.windows = []
             self.message+="SKIPPED  "+ str(self.max_gap)
@@ -844,9 +832,8 @@ class LANE_DETECTION:
 if __name__ == "__main__":
 
 
-    # video_reader =  cv2.VideoCapture("videos/nice_road.mp4") 
-    video_reader =  cv2.VideoCapture("videos/challenge_video.mp4")
-    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4")
+    video_reader =  cv2.VideoCapture("videos/nice_road.mp4") 
+
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
