@@ -6,33 +6,7 @@ from lane_detection import LANE_DETECTION, OBSTACLE,obstructions,create_queue, p
 import numpy as np
 import cv2
 from datetime import datetime
-# from PIL import Image
-# from matplotlib import pyplot as plt
-# yolo_detector =  YOLO(score =  0.3, iou =  0.5, gpu_num = 0)
-
-
-
-
-        
-        
-        
-  
-    
-    
-class TRAFFIC_LIGHTS(OBSTACLE) :
-  def __init__(self) :
-    return None
-  
-  def detect_status(self):
-    return None
-    
-class TRAFFIC_SIGNS(OBSTACLE):
-  def __init__(self) :
-    return None
-  
-  def decipher(self):
-    return None
-
+ 
 
 class FRAME :
     fps:float
@@ -190,12 +164,6 @@ class FRAME :
             self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.warpPerspective(img, self.lane.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
-
-
-
-    
-     
-    
     
     def vehicle_speed(self) :
         return
