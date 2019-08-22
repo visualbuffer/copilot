@@ -504,15 +504,15 @@ class LANE_DETECTION:
         template = "{0:17}{1:17}{2:17}"
         txt_header = template.format("Left ", "Right ", "Center") 
         # print(txt_header)
-        txt_values = template.format("{:.0f}m".format(left_curvature_meters), 
-                                     "{:.0f}m".format(right_curvature_meters),
-                                     "{:.2f}m Right".format(center_offset_meters))
+        txt_values = template.format("{:d}m".format(left_curvature_meters), 
+                                     "{:d}m".format(right_curvature_meters),
+                                     "{:.2f}m Left".format(center_offset_meters))
         if center_offset_meters < 0.0:
-            txt_values = template.format("{:0f}m".format(left_curvature_meters), 
-                                     "{:0f}m".format(right_curvature_meters),
-                                     "{:.1f}m Left".format(math.fabs(center_offset_meters)))
+            txt_values = template.format("{:d}m".format(left_curvature_meters), 
+                                     "{:d}m".format(right_curvature_meters),
+                                     "{:.1f}m Right".format(math.fabs(center_offset_meters)))
             
-        
+         
 
         cv2.putText(img, txt_header, (offset_x, offset_y), self.font, sz, BLACK, 1, cv2.LINE_AA)
         cv2.putText(img, txt_values, (offset_x, offset_y + self._pip__y_offset * 2), self.font, sz, BLACK, 2, cv2.LINE_AA)
@@ -527,24 +527,13 @@ class LANE_DETECTION:
 
      
         small_lines = cv2.resize(lines_img, self._pip_size)
-        # small_region = cv2.resize(lines_regions_img, self._pip_size)
-        small_hotspots = cv2.resize(lane_hotspots_img, self._pip_size)
-        # small_color_psp = cv2.resize(psp_color_img, self._pip_size)
-                
+        small_hotspots = cv2.resize(lane_hotspots_img, self._pip_size)           
         lane_area_img[self._pip__y_offset: self._pip__y_offset + self._pip_size[1], self._pip__x_offset: self._pip__x_offset + self._pip_size[0]] = small_lines
-        
-        # start_offset_y = self._pip__y_offset 
-        # start_offset_x = 2 * self._pip__x_offset + self._pip_size[0]
-        # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_region
-        
         start_offset_y = self._pip__y_offset 
         start_offset_x = 2 * self._pip__x_offset + 1 * self._pip_size[0]
         lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0]] = small_hotspots
 
-        # start_offset_y = self._pip__y_offset 
-        # start_offset_x = 4 * self._pip__x_offset + 3 * self._pip_size[0]
-        # lane_area_img[start_offset_y: start_offset_y + self._pip_size[1], start_offset_x: start_offset_x + self._pip_size[0],:] = small_color_psp
-        
+
         
         return lane_area_img
     
@@ -633,15 +622,17 @@ class LANE_DETECTION:
         Returns the triple (left_curvature, right_curvature, lane_center_offset), which are all in meters
         """        
         y_eval = -np.max(self.ploty)
-        left_fit = self.left_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
-        right_fit =self.right_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
-        left_curverad = int(((1 + (2 * left_fit[0] * y_eval * self.ym_per_px + left_fit[1])**2)**1.5) / np.absolute(2 * left_fit[0]))
-        right_curverad = int(((1 + (2 *right_fit[0] * y_eval * self.ym_per_px + right_fit[1])**2)**1.5) / np.absolute(2 * right_fit[0]))
-        # left_fit = left_line.polynomial_coeff
-        # right_fit = right_line.polynomial_coeff
+        lp = self.left_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
+        rp =self.right_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
+        alpha =  self.px_per_xm
+        beta =  self.px_per_ym
+        left_curverad = int(((alpha**2 + (2 * lp[0] * y_eval * beta**2 + lp[1]*beta)**2)**1.5)/(np.absolute(2 * lp[0]*(alpha*beta)**2)))
+        right_curverad = int(((alpha**2 + (2 * rp[0] * y_eval * beta**2 + rp[1]*beta)**2)**1.5)/(np.absolute(2 * rp[0]*(alpha*beta)**2)))
+        # lp = left_line.polynomial_coeff
+        # rp = right_line.polynomial_coeff
         half_width  =    int(np.mean(self.rightx) -np.mean(self.leftx))//2
-        center_offset_img_space = (((left_fit[0] * y_eval**2 + left_fit[1] * y_eval + left_fit[2]) + 
-                   (right_fit[0] * y_eval**2 + right_fit[1] * y_eval + right_fit[2])) / 2) - self.vanishing_point[0]
+        center_offset_img_space = (((lp[0] * y_eval**2 + lp[1] * y_eval + lp[2]) + 
+                   (rp[0] * y_eval**2 + rp[1] * y_eval + rp[2])) / 2) - self.vanishing_point[0]
         self.lane_change = False
         if abs(center_offset_img_space) > half_width :
             self.lane_change = True
@@ -680,7 +671,7 @@ class LANE_DETECTION:
         Returns the tuple (left_lane_line, right_lane_line) which represents respectively the LANE_LINE instances for
         the computed left and right lanes, for the supplied binary warped image
         """
-        left_line = self.previous_left_lane_line
+         left_line = self.previous_left_lane_line
         right_line = self.previous_right_lane_line
         left_line.windows = []
         right_line.windows = []

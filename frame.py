@@ -6,14 +6,15 @@ from lane_detection import LANE_DETECTION, OBSTACLE,obstructions,create_queue, p
 import numpy as np
 import cv2
 from datetime import datetime
- 
+
+
 
 class FRAME :
     fps:float
     camera : CAMERA
     yolo : classmethod
     PERSP_PERIOD =  100000
-    YOLO_PERIOD = 2 # SECONDS
+    YOLO_PERIOD = 1 # SECONDS
     _defaults = {
         "id": 0,
         "first": True,
@@ -164,6 +165,12 @@ class FRAME :
             self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.warpPerspective(img, self.lane.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
+
+
+
+    
+     
+    
     
     def vehicle_speed(self) :
         return
@@ -171,7 +178,9 @@ class FRAME :
 if __name__ == "__main__":
     from tqdm import tqdm
     
-
+    # video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
+    # video_reader =  cv2.VideoCapture("videos/challenge_video_edit.mp4") 
+    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
     video_reader =  cv2.VideoCapture("videos/nice_road.mp4")
     # video_reader =  cv2.VideoCapture("videos/nh60.mp4")
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
@@ -187,7 +196,7 @@ if __name__ == "__main__":
     frame = FRAME(image=image, fps =  fps, verbose =  3)
     frames = nb_frames
     t0  =180  # sec
-    t1 = 200#int(frames/fps) #sec
+    t1 = 220#int(frames/fps) #sec
     dur = t1 -t0
     video_reader.set(1,t0*fps)
     start = datetime.utcnow().timestamp()
