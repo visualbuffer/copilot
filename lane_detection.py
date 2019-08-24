@@ -105,88 +105,125 @@ class OBSTACLE(BoundBox):
             self.update_score(box)
 
 
-class LANE_LINE:
-    def __init__(self):
-        
-        self.polynomial_coeff = []
-        self.line_fit_x = []
-        self.non_zero_x = np.array([])
-        self.non_zero_y = np.array([])
-        self.windows = []
-
-    def purge_points(self, xlim):
-        p  =  self.non_zero_x < xlim
-        q =  self.non_zero_x > 0
-        r = np.logical_and(p, q)
-        self.non_zero_x = self.non_zero_x[r]
-        self.non_zero_y = self.non_zero_y[r]
-        return
-
-    def fitpoly(self, P0, ):
-        self.polynomial_coeff,_ = curve_fit(polyfunc,self.non_zero_y, self.non_zero_x, p0=P0)#, sigma=sigma)
-        return
-
-
-
 
 class LANE_HISTORY:
-    def __init__(self, queue_depth=12,poly_col=np.array([1,1,1]), test_points=[300, 500, 700], poly_max_deviation_distance=50, smoothing = 10, ploty =np.array([])):
-        self.lane_lines = create_queue(queue_depth)
-        self.smoothed_poly = poly_col
+    def __init__(self,fps, queue_depth=12,poly_col=np.array([1,1,1]), test_points=[300, 500, 700], poly_max_deviation_distance=50, smoothing = 10, ploty =np.array([])):
+        self.fps =fps
         self.test_points = np.asarray(test_points)
         self.poly_max_deviation_distance = poly_max_deviation_distance
         self.lost = False
-        self.lost_count = 0
+        
         self.max_lost_count = queue_depth
+        self.lost_count = self.max_lost_count + 10
         self.smoothing =  smoothing
         self.ploty =ploty
-        self.fitx =  None
+        self.leftFit =  None      # LEFT FIT POINTS
+        self.rightFit =  None     # RIGHT FIT POINTS
+        self.leftx = create_queue(self.fps//4)
+        self.rightx =  create_queue(self.fps//4)
+        self.width = None  
+        self.previous_centers =  None
+        self.current_coef = None
+        self.smoothed_poly = poly_col
+        self.poly_history = create_queue(queue_depth)
+        self.y = None
+        self.x = None
         self.appended = 0 
         self.breached = 0
         self.reset = 0
-      
-    
-    def addlane(self, lane_line :LANE_LINE,):
+        self.curvature = 0 
+        self.centerx = 0
+        self.lane_offset = 0 
+        self.left_windows = []
+        self.right_windows=[]
+
+
+    def compute_lane_points(self) :  
+        self.leftFit =  self.previous_centers - self.width//2
+        self.rightFit = self.previous_centers + self.width//2
+
+    def compute_curvature(self, alpha, beta):
+        y_eval = -np.max(self.ploty)
+        lp =  self.smoothed_poly
+        self.curvature =  int(((beta**2 + (2 * lp[0] * y_eval * alpha**2 + \
+                    lp[1]*alpha)**2)**1.5)/(np.absolute(2 * lp[0]*(alpha*beta)**2)))
+        return
+
+
+    def compute_offset(self):
+        y_eval = -np.max(self.ploty)
+        lp =  self.smoothed_poly
+        self.lane_offset = lp[0] * y_eval**2 + lp[1] * y_eval + lp[2] -  self.centerx
+        if abs(self.lane_offset) > self.width //2 :
+            if self.lane_offset < 0 :
+                print("\n\rLANE CHANGE TO RIGHT\033[F")
+                self.poly_history = create_queue(self.poly_history.maxlen)
+                self.leftx =  self.rightx
+                self.rightx  =  create_queue(length = self.rightx.maxlen)
+                self.rightx.append(int(np.mean(self.leftx) +  self.width  ))
+                self.previous_centers =  self.previous_centers+self.width
+            else :
+                print("\n\rLANE CHANGE TO LEFT\033[F")
+                self.poly_history = create_queue(self.poly_history.maxlen)
+                self.rightx =  self.leftx
+                self.leftx  =  create_queue(length = self.leftx.maxlen)
+                self.leftx.append(int(np.mean(self.rightx) -  self.width  ))
+                self.previous_centers =  self.previous_centers-self.width
+        else:
+            self.leftx.append(self.previous_centers[0] - self.width//2)
+            self.rightx.append(self.previous_centers[0] + self.width//2)
+        return
+
+    def addlane(self, y,x):
         status = "APPENDED | "   
-        lane_line.fitpoly(P0 = self.smoothed_poly ) 
-        if  (len(self.lane_lines) == 0 or (self.lost_count > self.max_lost_count )) :  
+        self.y =  y
+        self.x =  x
+        self.current_coef,_ = curve_fit(polyfunc,self.y, self.x, p0=self.smoothed_poly)
+        if  (self.lost_count > self.max_lost_count ) :  
             status ="RESET | "
-            self.lane_lines.append(lane_line)
-            lane_line.polynomial_coeff = self.get_smoothed_polynomial()
-            lane_line.line_fit_x =  np.polyval(lane_line.polynomial_coeff  ,  -self.ploty)  
-            self.fitx = lane_line.line_fit_x
+            
+            self.get_smoothed_polynomial()
             self.lost =  False
             self.lost_count = 0
             self.reset +=1
+            return True, status
 
-            return True, status, lane_line
         test_y_smooth = np.asarray(list(map(lambda x: np.polyval(self.smoothed_poly,x), -self.test_points)))
-        test_y_new = np.asarray(list(map(lambda x: np.polyval(lane_line.polynomial_coeff,x), -self.test_points)))
+        test_y_new = np.asarray(list(map(lambda x: np.polyval(self.current_coef,x), -self.test_points)))
         dist = np.absolute(test_y_smooth - test_y_new)
         max_dist = dist[np.argmax(dist)]
         if max_dist > self.poly_max_deviation_distance:
             status = "BREACHED | "
-            lane_line.polynomial_coeff = self.smoothed_poly
-            lane_line.line_fit_x =  self.fitx
             self.lost =  True
             self.lost_count += 1 
  
             self.breached +=1
-            return False , status, lane_line 
+            return False , status 
 
-        self.lane_lines.append(lane_line)
-        lane_line.polynomial_coeff = self.get_smoothed_polynomial()
-        lane_line.line_fit_x =  np.polyval(lane_line.polynomial_coeff  ,  -self.ploty)  
-        self.fitx = lane_line.line_fit_x
+        self.get_smoothed_polynomial()
         self.lost =  False
         self.lost_count = 0
         self.appended +=1
-        return True, status, lane_line
+        return True, status
     
     def get_smoothed_polynomial(self):
-        all_coeffs = np.asarray(list(map(lambda lane_line: lane_line.polynomial_coeff, self.lane_lines)))
+        self.poly_history.append(self.current_coef)
+        all_coeffs = np.asarray(list(self.poly_history))
         self.smoothed_poly = np.mean(all_coeffs[-self.smoothing:,:], axis=0)
+        self.previous_centers =  np.asarray([np.polyval(self.smoothed_poly,-x) for x in self.ploty], dtype=int)
+        self.compute_lane_points()
+        self.compute_offset()
         return self.smoothed_poly
+
+    def calculate_position(self,x,y):
+        position =  np.polyval(self.smoothed_poly ,y) - x 
+        status =  "right"
+        if position < - self.width//2 :
+            status =  "left"
+        elif position < self.width//2:
+            status =  "my"
+        return status
+
 
 
 
@@ -206,11 +243,14 @@ class LANE_DETECTION:
     real_world_lane_size_meters=(32, 3.7)
     ego_vehicle_in_frame=False
     font = cv2.FONT_HERSHEY_SIMPLEX
+    bottom = 0
     def __init__(self,  img,fps,
-            yellow_lower = np.uint8([ 20, 50,   40]),
+            yellow_lower = np.uint8([ 20, 50,   50]),
             yellow_upper = np.uint8([35, 255, 255]),
             white_lower = np.uint8([ 0, 200,   0]),
             white_upper = np.uint8([180, 255, 100]), 
+            lum_factor = 150,
+            max_gap_th = 2/5,
             lane_start=[0.35,0.75] , 
             verbose = 3):
         self.message = ""
@@ -225,50 +265,50 @@ class LANE_DETECTION:
         self.yellow_upper =  yellow_upper
         self.white_lower =  white_lower
         self.white_upper = white_upper 
-        self.lane_change = True
+        self.lane_change = False
+        # self.lane_width = 0
         # IMAGE PROPERTIES
+        self.lum_factor =  lum_factor
+       
         self.image =  img
         self.font_sz = 4e-4 * self.image.shape[0]
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
-        self.UNWARPED_SIZE  = (int(self.img_dimensions[1]*1),int(self.img_dimensions[1]*1))
+        self.UNWARPED_SIZE  = (320,320)#(int(self.img_dimensions[1]*0.5),int(self.img_dimensions[1]*0.5))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.15)
-        self.margin = int(self.img_dimensions[1]*0.075)
+        self.margin = int(self.UNWARPED_SIZE[1]*0.08)
         self.window_height = np.int(self.UNWARPED_SIZE[1]//self.windows_per_line)
-        x =  np.linspace(0,self.img_dimensions[1]-1, self.img_dimensions[1])
-        self.parabola = -200*x*(x-self.img_dimensions[1])
         self._pip_size = (int(self.image.shape[1] * 0.2), int(self.image.shape[0]*0.2))
         self.minpix=self.window_height
         self.maxpix = int(self.margin * self.window_height *0.5)
-        self.leftx = create_queue(self.fps//4)
-        self.rightx = create_queue(self.fps//4)
-        self.calc_perspective(lane_start=lane_start)
-        self.ndirect = 0
-        self.nskipped = 0
+
+
+        self.n_gap_skip = 0
         self.max_gap = 0
-        self.coef = np.array([1,1,1])
+
         if self.ego_vehicle_in_frame :
             self.windows_range = range(int(self.windows_per_line*0.05), self.windows_per_line, 1)
             self.window_offset = int(self.windows_per_line*0.05)
         else:
             self.windows_range = range( self.windows_per_line)
             self.window_offset = 0 
-        self.ploty = np.linspace(int(self.UNWARPED_SIZE[1]*0.45), self.UNWARPED_SIZE[1]- 1, int(self.UNWARPED_SIZE[1]*0.4))
-        self.previous_left_lane_line = LANE_LINE()
-        self.previous_right_lane_line = LANE_LINE()
+        self.ploty = np.linspace(int(self.UNWARPED_SIZE[1]*0.45), self.UNWARPED_SIZE[1]- 1, int(self.UNWARPED_SIZE[1]*0.4), dtype=int)
+
         test = np.arange(0.3,1,0.1)*self.UNWARPED_SIZE[1]
         test = test.astype(int)
-        self.left_line_history = LANE_HISTORY(test_points = test, queue_depth=self.fps//3, ploty = self.ploty)
-        self.right_line_history = LANE_HISTORY(test_points = test, queue_depth=self.fps//3, ploty = self.ploty)
-        self.total_img_count = 0
-        # self.self.margin_red = 1# .995
-        
+        self.lane = LANE_HISTORY(self.fps,test_points = test, queue_depth=self.fps//3, ploty = self.ploty)
+        self.max_gap_th =  max_gap_th * self.windows_per_line
+        self.calc_perspective(lane_start=lane_start)
         
 
     def compute_bounds(self, image):
-        avg = np.average(image[image.shape[0]//4:image.shape[0]*3//4,image.shape[1]*2//3 : image.shape[1],1])
-        l_rel =  max(min((avg/150)**3.0,1.35),0.5)
-        self.yellow_lower[1] = int(l_rel*50)
-        self.white_lower[1] = int(l_rel *180)
+        lx = int( max( np.mean(self.lane.leftx),0))
+        rx =  int(max(min(np.mean(self.lane.rightx), image.shape[0]),lx))
+
+        avg = np.average(image[lx:rx,\
+            image.shape[1]*2//3 : image.shape[1]-self.bottom,1])
+        l_rel =  max(min((avg/self.lum_factor)**2,1.3),0.45)
+        self.yellow_lower[1] = int(l_rel*25)
+        self.white_lower[1] = int(l_rel *170)
         self.message = self.message+"WHITE" + str(self.white_lower[1])
         return
 
@@ -277,13 +317,16 @@ class LANE_DETECTION:
         Returns a binary thresholded image produced retaining only white and yellow elements on the picture
         The provided image should be in RGB formats
         """
+        # cv2.imwrite(self.temp_dir+"temp.jpg", image)
         converted = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
-        if self.count % (self.fps) == 0 :
+        if self.count % (self.fps*4) == 0 :
             self.compute_bounds(converted)
             
         yellow_mask = cv2.inRange(converted, self.yellow_lower, self.yellow_upper)   
         white_mask = cv2.inRange(converted, self.white_lower, self.white_upper)
         mask = cv2.bitwise_or(white_mask, yellow_mask)
+        # t2 =  cv2.bitwise_and(image, image, mask = mask)
+        # cv2.imwrite(self.temp_dir+"temp2.jpg", t2)
         return mask
 
     def calc_perspective(self,  lane_start=[0.25,0.75]):
@@ -295,27 +338,16 @@ class LANE_DETECTION:
                     [self.img_dimensions[1]*15//23,self.img_dimensions[0]*13//23],
                     [self.img_dimensions[1]*9//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
-        # x = np.linspace(0,self.img_dimensions[0]-1,self.img_dimensions[0])
-        # grad= np.tile(-5*x*(x-self.img_dimensions[1]),self.img_dimensions[1]).reshape((self.img_dimensions[0], self.img_dimensions[1]))
-
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         mn_hsl = np.median(grey) #grey.median()
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
-        # edges = cv2.Canny(grey[:, :, 1], 500, 400)
-        # plt.imshow(edges, cmap="gray")
-        # plt.show()
-        # cv2.imwrite(self.temp_dir+"mask.jpg", grey*roi)
-        # cv2.imwrite(self.temp_dir+"mask.jpg", edges*roi)
-
-        lines = cv2.HoughLinesP(edges*roi,rho =20,theta = 2* np.pi/180,threshold = 7,minLineLength = self.img_dimensions[0]//3,maxLineGap = self.img_dimensions[0]//15)
+        lines = cv2.HoughLinesP(edges*roi,rho =12,theta = 2* np.pi/180,threshold = 6,minLineLength = self.img_dimensions[0]//3,maxLineGap = self.img_dimensions[0]//15)
 
         img2 =  self.image.copy()
-        # print(lines)
         for line in lines:
-           
             for x1, y1, x2, y2 in line:
                 cv2.line(img2,(x1,y1),(x2,y2),(255,0,0),2)
                 normal = np.array([[-(y2-y1)], [x2-x1]], dtype=np.float32)
@@ -326,14 +358,15 @@ class LANE_DETECTION:
                 Rhs += np.matmul(outer, point)
         self.vanishing_point= np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
 
-        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.01 *self.img_dimensions[1] :
+        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.02 *self.img_dimensions[1] :
             print("ABSURD POSITION TRY OTHER PARAMETERS",self.vanishing_point , "FOR",self.img_dimensions )
             self.vanishing_point[0] = self.img_dimensions[1]//2
-        if abs(self.vanishing_point[1] - self.img_dimensions[0]*0.55) > 0.1 *self.img_dimensions[0] :
+        if abs(self.vanishing_point[1] - self.img_dimensions[0]*0.57) > 0.05 *self.img_dimensions[0] :
             print("ABSURD POSITION TRY OTHER PARAMETERS",self.vanishing_point , "FOR",self.img_dimensions )
-            self.vanishing_point[1] = int(self.img_dimensions[0]*0.55)
+            self.vanishing_point[1] = int(self.img_dimensions[0]*0.57)
         top =self.vanishing_point[1] + int(self.WRAPPED_WIDTH*0.15)
-        bottom = self.img_dimensions[0]*7//6
+        self.bottom  = int(0.02*self.img_dimensions[0])
+        bottom = self.img_dimensions[0]+self.bottom
         
 
         def on_line(p1, p2, ycoord):
@@ -351,17 +384,20 @@ class LANE_DETECTION:
         self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
         min_wid = 1000
         img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
+        self.lane.leftx.append(x1)
+        self.lane.rightx.append(x2)
         mask = self.compute_mask(img) 
-        
         # x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
         x1 = int(self.UNWARPED_SIZE[0]*lane_start[0])
         x2 = int(self.UNWARPED_SIZE[0]*lane_start[1]) 
         span = self.UNWARPED_SIZE[0]//5 
         x1 = x1-span + self.detect_lane_start(mask[:,x1-span :x1+span])
         x2 = x2-span + self.detect_lane_start(mask[:,x2-span :x2+span])
-        self.leftx.append(x1)
-        self.rightx.append(x2)
-        self.previous_centers = np.ones(self.windows_per_line)*(x1+x2)//2
+        self.lane.leftx.append(x1)
+        self.lane.rightx.append(x2)
+        
+        self.lane.width = x2 -x1
+        self.lane.previous_centers = np.ones(self.windows_per_line)*(x1+x2)//2
         lane_roi_points = np.array([
                     [self.img_dimensions[1]*9//80, self.img_dimensions[0]],
                     [self.img_dimensions[1]*71//80,self.img_dimensions[0]],
@@ -383,15 +419,22 @@ class LANE_DETECTION:
         self.px_per_ym = self.px_per_xm * np.linalg.norm(Lh[:,0]) / np.linalg.norm(Lh[:,1])
         self.ym_per_px =  1/self.px_per_ym
         self.perspective_done_at =  datetime.utcnow().timestamp()
-        if self.verbose  > 2:       
+
+        pos = np.array((self.vanishing_point[0], bottom )).reshape(1, 1, -1)
+        dst =  cv2.perspectiveTransform(pos, self.trans_mat).reshape(2)
+        self.lane.centerx = dst[0]
+        if self.verbose  > 1:       
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
 
             cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
-            cv2.imwrite(self.temp_dir+"perspective1.jpg",img_orig)
-            cv2.imwrite(self.temp_dir+"perspective2.jpg",img)
-            cv2.imwrite(self.temp_dir+"perspective3.jpg",img2)
+            cv2.imwrite(self.temp_dir+"vanishing_point.jpg",img_orig)
+            cv2.imwrite(self.temp_dir+"lane_width.jpg",img)
+            cv2.imwrite(self.temp_dir+"perspective_lines.jpg",img2)
+            cv2.imwrite(self.temp_dir+"mask.jpg",mask)
+            img = cv2.bitwise_and(img, img, mask =  mask )
+            cv2.imwrite(self.temp_dir+"masked_regions.jpg",img)
             return img_orig
         return
 
@@ -400,14 +443,7 @@ class LANE_DETECTION:
             dst =  cv2.perspectiveTransform(pos, self.trans_mat).reshape(2)
             box.x =  int(dst[0])
             box.y = -int(dst[1])
-            left= np.polyval(self.left_line_history.smoothed_poly ,box.y) - box.x
-            right= np.polyval(self.right_line_history.smoothed_poly ,box.y) - box.x
-            status = "my"
-            if left < 0 and right <0:
-                status = "right"
-            elif right>0 and left >0 :
-                status = "left"
-            box.lane = status
+            box.lane  = self.lane.calculate_position(box.x,box.y)
             dst =  np.array([dst[0]/self.px_per_xm,(self.UNWARPED_SIZE[1]-dst[1])/self.px_per_ym])
             box.update_obstacle(dst,self.fps)
 
@@ -432,14 +468,10 @@ class LANE_DETECTION:
         Attempts to find lane lines on the given image and returns an image with lane area colored in green
         as well as small intermediate images overlaid on top to understand how the algorithm is performing
         """
-        # First step - undistort the image using the instance's object and image points
-        # undist_img = undistort_image(img, self.objpts, self.imgpts)
         off =  int(100*self.font_sz)
         self.message = "["+ str(self.count)+"]"
         overlay =  img.copy()
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        ll, rl , thres_img_psp= self.compute_lane_lines(overlay)
-        # overlay = thres_img_psp.copy() 
+        thres_img_psp= self.compute_lane_lines(overlay)
         for i in range(len(obstacles)):
             obstacles[i] =  self.calculate_position(obstacles[i])
             box =  obstacles[i]
@@ -469,31 +501,19 @@ class LANE_DETECTION:
             cv2.rectangle(overlay, (box.xmin,box.ymin), (box.xmax,box.ymax), color,2)
             cv2.circle(overlay,past_center,1, GRAY,2)
         img =  cv2.addWeighted(img, alpha, overlay, beta, gamma)
-        
-
-
-
-
-        
-        ll.purge_points(self.UNWARPED_SIZE[1])
-        rl.purge_points(self.UNWARPED_SIZE[1])
         out_img = np.dstack((thres_img_psp,thres_img_psp,thres_img_psp))
-        img = self.draw_lane_area(out_img, img, ll, rl)  
-        self.previous_left_lane_line = ll
-        self.previous_right_lane_line = rl
-        lcr, rcr, lco = self.compute_lane_curvature(ll, rl)
+        img = self.draw_lane_area(out_img, img)  
         if self.verbose >2 : 
             
-            drawn_lines = self.draw_lane_lines(out_img, ll, rl)        
+            drawn_lines = self.draw_lane_lines(out_img)        
             # drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
-            drawn_hotspots = self.draw_lines_hotspots(out_img, ll, rl, obstacles)
+            drawn_hotspots = self.draw_lines_hotspots(out_img, obstacles)
             img = self.combine_images(img, drawn_lines,drawn_hotspots)
-            img = self.draw_lane_curvature_text(img, lcr, rcr, lco)
-        self.total_img_count += 1
+            img = self.draw_lane_curvature_text(img,)
         
         return img
     
-    def draw_lane_curvature_text(self, img, left_curvature_meters, right_curvature_meters, center_offset_meters):
+    def draw_lane_curvature_text(self, img):
         """
         Returns an image with curvature information inscribed
         """
@@ -501,16 +521,14 @@ class LANE_DETECTION:
         offset_y = self._pip_size[1] * 1 + self._pip__y_offset * 5
         offset_x = self._pip__x_offset
         
-        template = "{0:17}{1:17}{2:17}"
-        txt_header = template.format("Left ", "Right ", "Center") 
+        template = "{0:17}{1:17}"
+        txt_header = template.format("Curvature ", "Offset") 
         # print(txt_header)
-        txt_values = template.format("{:d}m".format(left_curvature_meters), 
-                                     "{:d}m".format(right_curvature_meters),
-                                     "{:.2f}m Left".format(center_offset_meters))
-        if center_offset_meters < 0.0:
-            txt_values = template.format("{:d}m".format(left_curvature_meters), 
-                                     "{:d}m".format(right_curvature_meters),
-                                     "{:.1f}m Right".format(math.fabs(center_offset_meters)))
+        txt_values = template.format("{:d}m".format(self.lane.curvature), 
+                                     "{:.2f}m Left".format(self.lane.lane_offset*self.xm_per_px))
+        if self.lane.lane_offset < 0.0:
+            txt_values = template.format("{:d}m".format(self.lane.curvature), 
+                                     "{:.2f}m Right".format(self.lane.lane_offset*self.xm_per_px))
             
          
 
@@ -538,13 +556,13 @@ class LANE_DETECTION:
         return lane_area_img
     
         
-    def draw_lane_area(self, warped_img, undist_img, left_line, right_line):
+    def draw_lane_area(self, warped_img, undist_img):
         """
         Returns an image where the inside of the lane has been colored in bright green
         """
         color_warp = np.zeros_like(warped_img).astype(np.uint8)
-        pts_left = np.array([np.transpose(np.vstack([left_line.line_fit_x, self.ploty]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x, self.ploty])))])
+        pts_left = np.array([np.transpose(np.vstack([self.lane.leftFit, self.ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([self.lane.rightFit, self.ploty])))])
         pts = np.hstack((pts_left, pts_right))
         cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
         newwarp = cv2.warpPerspective(color_warp, self.inv_trans_mat, (undist_img.shape[1], undist_img.shape[0])) 
@@ -552,117 +570,48 @@ class LANE_DETECTION:
         return result
         
         
-    def draw_lane_lines(self, img, left_line, right_line):
+    def draw_lane_lines(self, img):
         """
         Returns an image where the computed lane lines have been drawn on top of the original warped binary image
         """
         out_img = img.copy()
-        # try: 
-        pts_left = np.dstack((left_line.line_fit_x, self.ploty)).astype(np.int32)
-        pts_right = np.dstack((right_line.line_fit_x, self.ploty)).astype(np.int32)
+        pts_left = np.dstack((self.lane.leftFit, self.ploty)).astype(np.int32)
+        pts_right = np.dstack((self.lane.rightFit, self.ploty)).astype(np.int32)
 
         cv2.polylines(out_img, pts_left, False,  (255, 140,0), 5)
         cv2.polylines(out_img, pts_right, False, (255, 140,0), 5)
         
-        for low_pt, high_pt in left_line.windows:
+        for low_pt, high_pt in self.lane.left_windows:
             cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)
 
-        for low_pt, high_pt in right_line.windows:            
-            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)  
-        # except:
-        #     print("LANE LOST IN THIS FRAME") 
-        #     plt.imshow(out_img)
-        #     plt.show()        
+        for low_pt, high_pt in self.lane.right_windows:            
+            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)         
         return out_img    
     
-    def draw_lane_lines_regions(self, img, left_line, right_line):
-        """
-        Returns an image where the computed left and right lane areas have been drawn on top of the original warped binary image
-        """
-        warped_img = img.copy()
-        self.margin = self.margin
-
-        
-        left_line_window1 = np.array([np.transpose(np.vstack([left_line.line_fit_x - self.margin, self.ploty]))])
-        left_line_window2 = np.array([np.flipud(np.transpose(np.vstack([left_line.line_fit_x + self.margin, 
-                                      self.ploty])))])
-        left_line_pts = np.hstack((left_line_window1, left_line_window2))
-        
-        right_line_window1 = np.array([np.transpose(np.vstack([right_line.line_fit_x - self.margin, self.ploty]))])
-        right_line_window2 = np.array([np.flipud(np.transpose(np.vstack([right_line.line_fit_x + self.margin, 
-                                      self.ploty])))])
-        right_line_pts = np.hstack((right_line_window1, right_line_window2))
-        cv2.fillPoly(warped_img, np.int_([left_line_pts]), (0, 255, 0))
-        cv2.fillPoly(warped_img, np.int_([right_line_pts]), (0, 255, 0))
-        
-        return warped_img
+    
 
 
-    def draw_lines_hotspots(self, img, left_line, right_line, obstacles:[OBSTACLE] =  []):
+    def draw_lines_hotspots(self, img,  obstacles:[OBSTACLE] =  []):
         """
         Returns a RGB image where the portions of the lane lines that were
         identified by our pipeline are colored in yellow (left) and blue (right)
         """
-        # out_img = np.dstack((warped_img, warped_img, warped_img))*255
         sz = self.font_sz*12
         out_img = img.copy()
-        for i in range(len(left_line.non_zero_x)) :
-            cv2.circle( out_img,( left_line.non_zero_x[i],-left_line.non_zero_y[i]), 5, (255, 255, 0), -1)
-        for i in range(len(right_line.non_zero_x)) :
-            cv2.circle( out_img,( right_line.non_zero_x[i],-right_line.non_zero_y[i]), 5, (0, 0, 255), -1)
-        cv2.line(out_img, (int(np.average(self.leftx)), 0), (int(np.average(self.leftx)), self.UNWARPED_SIZE[1]), (255, 255, 0), 4)
-        cv2.line(out_img, (int(np.average(self.rightx)), 0), (int(np.average(self.rightx)), self.UNWARPED_SIZE[1]), (0, 0, 255), 4)
+        lx =  self.lane.x - self.lane.width//2
+        rx = self.lane.x + self.lane.width//2 
+        for i in range(len(self.lane.x)) :
+            cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, (255, 255, 0), -1)
+            cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, (0, 0, 255), -1)
         for i in range(len(obstacles)):
             box =  obstacles[i]
             cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)    
         return out_img
 
-    def compute_lane_curvature(self, left_line, right_line):
-        """
-        Returns the triple (left_curvature, right_curvature, lane_center_offset), which are all in meters
-        """        
-        y_eval = -np.max(self.ploty)
-        lp = self.left_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, leftx * self.xm_per_px, 2)
-        rp =self.right_line_history.smoothed_poly# np.polyfit(-1*self.ploty * self.ym_per_px, rightx * self.xm_per_px, 2)
-        alpha =  self.px_per_xm
-        beta =  self.px_per_ym
-        left_curverad = int(((alpha**2 + (2 * lp[0] * y_eval * beta**2 + lp[1]*beta)**2)**1.5)/(np.absolute(2 * lp[0]*(alpha*beta)**2)))
-        right_curverad = int(((alpha**2 + (2 * rp[0] * y_eval * beta**2 + rp[1]*beta)**2)**1.5)/(np.absolute(2 * rp[0]*(alpha*beta)**2)))
-        # lp = left_line.polynomial_coeff
-        # rp = right_line.polynomial_coeff
-        half_width  =    int(np.mean(self.rightx) -np.mean(self.leftx))//2
-        center_offset_img_space = (((lp[0] * y_eval**2 + lp[1] * y_eval + lp[2]) + 
-                   (rp[0] * y_eval**2 + rp[1] * y_eval + rp[2])) / 2) - self.vanishing_point[0]
-        self.lane_change = False
-        if abs(center_offset_img_space) > half_width :
-            self.lane_change = True
-            if center_offset_img_space < 0:
-                print("\n\rLANE CHANGE TO RIGHT\033[F")
-                self.left_line_history = self.right_line_history
-                self.previous_left_lane_line  = self.previous_right_lane_line
-                self.right_line_history = LANE_HISTORY(test_points = self.left_line_history.test_points, queue_depth=self.left_line_history.max_lost_count, ploty = self.ploty)
-                self.previous_right_lane_line =  LANE_LINE()
-                self.leftx =  self.rightx
-                self.rightx  =  create_queue(length = self.leftx.maxlen)
-                self.rightx.append(np.mean(self.leftx) +  2*half_width)
-            elif np.mean(self.rightx)>2*half_width:
-                print("\n\rLANE CHANGE TO LEFT\033[F")
-                self.right_line_history = self.left_line_history
-                self.previous_right_lane_line  = self.previous_left_lane_line
-                self.left_line_history = LANE_HISTORY(test_points = self.right_line_history.test_points, queue_depth=self.right_line_history.max_lost_count, ploty = self.ploty)
-                self.previous_left_lane_line =  LANE_LINE()
-                self.rightx =  self.leftx
-                self.leftx  =  create_queue(length = self.rightx.maxlen)
-                self.leftx.append(np.mean(self.rightx) -  2*half_width)
-            self.previous_centers = np.ones(self.windows_per_line)*(np.mean(self.leftx)+np.mean(self.rightx))//2
-        center_offset_real_world_m = int(center_offset_img_space * self.xm_per_px*100)/100.0       
-
-        return left_curverad, right_curverad, center_offset_real_world_m
+  
         
     def detect_lane_start(self, image):
         histx =   np.sum(image[image.shape[0]*4//5:,:], axis=0)
-        # histx = histx * self.lanebola
-        # print(np.argmax(histx))
         return np.argmax(histx)
     
         
@@ -671,51 +620,29 @@ class LANE_DETECTION:
         Returns the tuple (left_lane_line, right_lane_line) which represents respectively the LANE_LINE instances for
         the computed left and right lanes, for the supplied binary warped image
         """
-         left_line = self.previous_left_lane_line
-        right_line = self.previous_right_lane_line
-        left_line.windows = []
-        right_line.windows = []
+
+        self.lane.left_windows = []
+        self.lane.right_windows = []
         undst_img  = cv2.bitwise_and(img, img, mask =  self.lane_roi )
         pp_img = cv2.warpPerspective(undst_img, self.trans_mat, (self.UNWARPED_SIZE[1],self.UNWARPED_SIZE[0]))
         warped_img = self.compute_mask(pp_img)
 
-        self.margin = self.margin
 
         
-        x1_av =  int(np.average(self.leftx))
-        x2_av  = int(np.average(self.rightx))
+        x1_av =  int(np.average(self.lane.leftx))
+        x2_av  = int(np.average(self.lane.rightx))
         x1 = min(max(x1_av,self.margin), self.UNWARPED_SIZE[0]-self.margin*2)
         x2 = max( min(x2_av,self.UNWARPED_SIZE[0]-self.margin-1), x1+self.margin*2)
-        leftx_base = x1-self.margin + self.detect_lane_start(warped_img[:,x1-self.margin :x1+self.margin])
-        rightx_base = x2-self.margin + self.detect_lane_start(warped_img[:,x2-self.margin :x2+self.margin])
+        leftx_current = x1-self.margin + self.detect_lane_start(warped_img[:,x1-self.margin :x1+self.margin])
+        rightx_current = x2-self.margin + self.detect_lane_start(warped_img[:,x2-self.margin :x2+self.margin])
         nonzero = warped_img.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])  
-        if (rightx_base - leftx_base > self.UNWARPED_SIZE[0]//4) \
-            and (rightx_base - leftx_base < self.UNWARPED_SIZE[0]//2)\
-                and (not self.lane_change)\
-                    and  (leftx_base > 0):
-            if abs(x1_av - leftx_base) < self.margin : 
-                self.leftx.append(leftx_base)
-            if abs(x2_av - rightx_base) < self.margin : 
-                self.rightx.append(rightx_base)
-        leftx_current = int(np.mean(self.leftx))
-        rightx_current = int(np.mean(self.rightx))
-        lane_width= int(rightx_current - leftx_current)                
-        centerx_current = leftx_current + lane_width//2
-        centers = []
+        self.lane.width= int(x2_av - x1_av)                
+        centerx_current = (x2_av - x1_av) //2
+        pointx = []
+        pointy=[]
         center_idx = []
-        all_centers = []
-
-        leftx =[]
-        rightx =[]
-        lefty =[]
-        righty =[]
-
-        # leftx =[leftx_current]
-        # rightx =[rightx_current]
-        # lefty =[-(warped_img.shape[0] - self.windows_range[0] * self.window_height)]
-        # righty =[-(warped_img.shape[0] - self.windows_range[0]* self.window_height)]
         curve_compute =  0
         self.max_gap =  0 
         gap  = 0
@@ -726,99 +653,65 @@ class LANE_DETECTION:
             win_xleft_high = leftx_current + self.margin
             win_xright_low = rightx_current - self.margin
             win_xright_high = rightx_current + self.margin
-            
-            # if (win_xleft_low > 0) & (win_xleft_high < warped_img.shape[1]) & doleft:
-            left_line.windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
+            self.lane.left_windows.append([(win_xleft_low,win_y_low),(win_xleft_high,win_y_high)])
             good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
                         (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
-            right_line.windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])            
+            self.lane.right_windows.append([(win_xright_low,win_y_low),(win_xright_high,win_y_high)])            
             good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) & 
                 (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
             centerx =np.array([])
-
+            centery =np.array([])
             s = 0
             if (len(good_left_inds) > self.minpix) and (len(good_left_inds) < self.maxpix):
                 x = mode(nonzerox[good_left_inds])[0]
                 y = mode(nonzeroy[good_left_inds])[0]
-                leftx.extend(x)
-                lefty.extend(-y)
                 s +=1
-                centerx = x + lane_width//2
-                rightx.extend(x + lane_width)
-                righty.extend(-y)
-                # centery = nonzeroy[good_left_inds]
+                centerx = x + self.lane.width//2
+                centery = -y 
             if (len(good_right_inds) > self.minpix) and  (len(good_right_inds) < self.maxpix):
                 s += 1
                 x = mode(nonzerox[good_right_inds])[0]
                 y = mode(nonzeroy[good_right_inds])[0]
+                centerx = np.append(centerx, x-self.lane.width//2)
+                centery =  np.append(centery,-y)
 
-                rightx.extend(x)
-                righty.extend(-y)
-                centerx = np.append(centerx, x-lane_width//2)
-                leftx.extend(x - lane_width)
-                lefty.extend(-y)
-
-
-            # self.max_gap += s > 0
             
             if s > 0:    
                 centerx_current = int(np.average(centerx))
-                centers.append(centerx_current)
-                center_idx.append(window)
+                pointx.append(centerx_current)
+                pointy.append(int(np.average(centery)))
                 
                 gap = 0
             else :
                 gap +=1
                 if len(center_idx) > 5 :
                     if curve_compute% 5 == 0 :
-                        self.coef,_ =curve_fit(polyfunc,np.array(center_idx),np.array(centers), p0=self.coef)
-                    centerx_current = int(np.polyval(self.coef, window+1))
+                        self.coef,_ =curve_fit(polyfunc,pointy,np.array(pointx), p0=self.coef)
+                    centerx_current = int(np.polyval(self.coef, (window+1)*self.window_height))
                     curve_compute += 1
                 else :
-                    centerx_current = self.previous_centers[window-self.window_offset]
+                    centerx_current = self.lane.previous_centers[window-self.window_offset]
             self.max_gap =  max(self.max_gap, gap)
-            all_centers.append(centerx_current)
-            leftx_current = int(centerx_current -lane_width/2)
-            rightx_current = int(centerx_current +lane_width/2)
-         
-        if (self.max_gap > self.windows_per_line*2//5) and (not self.lane_change):
-            self.previous_left_lane_line.windows = []
-            self.previous_right_lane_line.windows = []
-            self.message+="SKIPPED  "+ str(self.max_gap)
-            left_line =  self.previous_left_lane_line
-            right_line =  self.previous_right_lane_line
-            self.count+=1
-            self.nskipped+=1
-            self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS))
-            return (left_line, right_line,warped_img)
+            leftx_current = int(centerx_current -self.lane.width/2)
+            rightx_current = int(centerx_current +self.lane.width/2)
+        if (not self.lane_change): 
+            if (self.max_gap > self.max_gap_th) and (self.count>0) :
+                self.lane.left_windows = []
+                self.lane.right_windows = []
+                self.message+="SKIPPED  "+ str(self.max_gap)
+                self.count+=1
+                self.n_gap_skip+=1
+                self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS))
+                return warped_img
+            status , message =  self.lane.addlane(pointy,np.array(pointx) )
             
-        self.previous_centers = all_centers
-        left_line.non_zero_x = np.array(leftx,np.int)  
-        left_line.non_zero_y =  np.array(lefty,np.int)
-        right_line.non_zero_x = np.array(rightx,np.int)
-        right_line.non_zero_y =  np.array(righty,np.int)
-
-        if len(leftx)>5:
-            left_ok,status,left_line = self.left_line_history.addlane(left_line)
-            self.message+= "LEFT" +   status  
-            if not left_ok :
+            self.message+= message
+            if not status : 
                 self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS)) 
-        else:
-            left_line.polynomial_coeff  = self.left_line_history.smoothed_poly 
-            left_line.line_fit_x =  np.polyval(left_line.polynomial_coeff  ,  -self.ploty) 
-            # self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS)) 
-                 
-        if len(rightx)>5:
-            right_ok,status,right_line = self.right_line_history.addlane(right_line)
-            self.message+= "RIGHT" + status
-            if not right_ok :
-                self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS)) 
-        else:
-            right_line.polynomial_coeff = self.right_line_history.smoothed_poly
-            right_line.line_fit_x =  np.polyval(right_line.polynomial_coeff  ,  -self.ploty)  
-            # self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS)) 
+            else:
+                self.lane.compute_curvature(self.px_per_ym,self.px_per_xm)
         self.count+=1
-        return (left_line, right_line,warped_img)
+        return warped_img
 
 if __name__ == "__main__":
 
@@ -832,7 +725,7 @@ if __name__ == "__main__":
     video_out = "videos/output30.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 14#180# seconds
+    pers_frame_time = 200#180# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
