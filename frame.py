@@ -87,16 +87,7 @@ class FRAME :
         self.__yp = int(self.YOLO_PERIOD*self.fps)
         ### LANE FINDER 
         self.count = 0
-        self.lane = LANE_DETECTION(self.image, self.fps,\
-            verbose=self.verbose, 
-            yellow_lower =self.yellow_lower,
-            yellow_upper = self.yellow_upper,
-            white_lower = self.white_lower,
-            white_upper = self.white_upper, 
-            lum_factor = self.lum_factor,
-            max_gap_th = self.max_gap_th,
-            lane_start=self.lane_start ,
-        )
+
 
 
     def perspective_tfm(self ,  pos) : 
@@ -209,7 +200,6 @@ class FRAME :
         return
 
 
-
     def warp(self, img):
         now  = datetime.utcnow().timestamp()
         if now - self.perspective_done_at > self.PERSP_PERIOD :
@@ -222,21 +212,32 @@ class FRAME :
             self.lane = LANE_DETECTION(self.image,self.fps)
         return cv2.warpPerspective(img, self.lane.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
-    def process_video(self, ):
-        video_reader =  cv2.VideoCapture("videos/challenge_video_edit.mp4") 
-        fps =  video_reader.get(cv2.CAP_PROP_FPS)
-        fps_factor = 2
-        fps_adjusted =  fps//fps_factor
+
+    def process_video(self, file_path, fps_facctor,\
+            video_out = "videos/output11.mov",pers_frame_time =14,\
+            t0  =.180 , t1 = int(frames/fps) ):
+        video_reader =  cv2.VideoCapture(file_path) 
+        fps_actual =  video_reader.get(cv2.CAP_PROP_FPS)
+        self.fps =  fps_actual//fps_factor
         nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-        video_out = "videos/output11.mov"
         video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-        pers_frame_time =14#180# 310# seconds
+        #180# 310# seconds
         pers_frame = int(pers_frame_time *fps)
         video_reader.set(1,pers_frame)
-        ret, image = video_reader.read()
-        frame = FRAME(image=image, fps =  fps_adjusted, verbose =2)
+        _, image = video_reader.read()
+
+        self.lane = LANE_DETECTION(image, self.fps,\
+            verbose=self.verbose, 
+            yellow_lower =self.yellow_lower,
+            yellow_upper = self.yellow_upper,
+            white_lower = self.white_lower,
+            white_upper = self.white_upper, 
+            lum_factor = self.lum_factor,
+            max_gap_th = self.max_gap_th,
+            lane_start=self.lane_start ,
+        )
         frames = nb_frames
         t0  =.180#310 # sec
         t1 = int(frames/fps) #sec
