@@ -5,7 +5,7 @@ from lane_detection import LANE_DETECTION, OBSTACLE,obstructions,create_queue, p
 import numpy as np
 import cv2
 from datetime import datetime
-
+from tqdm import tqdm
 
 
 class FRAME :
@@ -46,6 +46,7 @@ class FRAME :
         "LANE_WIDTH" :  3.66,
         "fps" :22,
         'verbose' :  3,
+        'YOLO_PERIOD' : 2,
         "yellow_lower" : np.uint8([ 20, 50,   50]),
         "yellow_upper" : np.uint8([35, 255, 255]),
         "white_lower" : np.uint8([ 0, 200,   0]),
@@ -71,14 +72,14 @@ class FRAME :
         self.speed =  self.get_speed()
         ### IMAGE PROPERTIES
         self.image : np.ndarray
-        if  self.image.size ==0 :
-            raise ValueError("No Image") 
-      
+        # if  self.image.size ==0 :
+        #     raise ValueError("No Image") 
+        self.img_shp :  (int, int)
+        self.area : int
         
         self.temp_dir = './images/detection/'
         self.perspective_done_at = datetime.utcnow().timestamp()
-        self.img_shp =  (self.image.shape[1], self.image.shape[0] )
-        self.area =  self.img_shp[0]*self.img_shp[1]
+       
         # self.image =  self.camera.undistort(self.image)
         ### OBJECT DETECTION AND TRACKING
         self.yolo =  YOLO()
@@ -87,6 +88,7 @@ class FRAME :
         self.__yp = int(self.YOLO_PERIOD*self.fps)
         ### LANE FINDER 
         self.count = 0
+        self.lane :LANE_DETECTION = None
 
 
 
@@ -185,7 +187,8 @@ class FRAME :
             image  =  cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             n_obs =  len(self.obstacles)
             for i in range(n_obs):
-                tracker = cv2.TrackerKCF_create()# cv2.TrackerMIL_create()#  # Note: Try comparing KCF with MIL
+                tracker = cv2.TrackerKCF_create()# 
+                # tracker = cv2.TrackerMIL_create()#  # Note: Try comparing KCF with MIL
                 box = self.obstacles[i]
                 bbox = (box.xmin, box.ymin, box.xmax-box.xmin, box.ymax-box.ymin)
                 # print(bbox)
@@ -213,22 +216,27 @@ class FRAME :
         return cv2.warpPerspective(img, self.lane.trans_mat, self.img_shp, flags=cv2.WARP_FILL_OUTLIERS +
                                                                      cv2.INTER_CUBIC+cv2.WARP_INVERSE_MAP)
 
-    def process_video(self, file_path, fps_facctor,\
+    def process_video(self, file_path, fps_factor,\
             video_out = "videos/output11.mov",pers_frame_time =14,\
-            t0  =.180 , t1 = int(frames/fps) ):
+            t0  =None , t1 =None ):
         video_reader =  cv2.VideoCapture(file_path) 
         fps_actual =  video_reader.get(cv2.CAP_PROP_FPS)
+       
         self.fps =  fps_actual//fps_factor
         nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-        video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
+        print("{:s} WIDTH {:d} HEIGHT {:d} FPS {:.2f} DUR {:.1f} s".format(\
+            file_path,frame_w,frame_h,fps_actual,nb_frames//fps_actual
+            ))
+        video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),self.fps, (frame_w, frame_h))
         #180# 310# seconds
-        pers_frame = int(pers_frame_time *fps)
+        pers_frame = int(pers_frame_time *fps_actual)
         video_reader.set(1,pers_frame)
-        _, image = video_reader.read()
-
-        self.lane = LANE_DETECTION(image, self.fps,\
+        _, self.image = video_reader.read()
+        self.img_shp =  (self.image.shape[1], self.image.shape[0] )
+        self.area =  self.img_shp[0]*self.img_shp[1]
+        self.lane = LANE_DETECTION(self.image, self.fps,\
             verbose=self.verbose, 
             yellow_lower =self.yellow_lower,
             yellow_upper = self.yellow_upper,
@@ -238,28 +246,24 @@ class FRAME :
             max_gap_th = self.max_gap_th,
             lane_start=self.lane_start ,
         )
-        frames = nb_frames
-        t0  =.180#310 # sec
-        t1 = int(frames/fps) #sec
-        dur = t1 -t0
-        video_reader.set(1,t0*fps)
-        # start = datetime.utcnow().timestamp()
-        for i in tqdm(range(int(t0*fps), int(t1*fps)),mininterval=3):
-            if i % fps_factor == 0 :  
-                status, image = video_reader.read()
-                if  status :
-                    try : 
-                        procs_img = frame.process_and_plot(image)
-                        video_writer.write(procs_img) 
-                    except :
-                        print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", frame.count)
-                        l1 =  frame.lane.white_lower[1]
-                        frame.lane.compute_bounds(image)
-                        print(l1,"->",frame.lane.white_lower[1])
-        # stop =datetime.utcnow().timestamp()
+        t1  =  t1 if t1 is not None else nb_frames/fps_actual 
+        t0 = t0 if t0 is not None else pers_frame_time
+        video_reader.set(1,t0*fps_actual)
+        for i in tqdm(range(int(t0*fps_actual), int(t1*fps_actual)),mininterval=3):
+            status, image = video_reader.read()
+            if  status and (i % fps_factor == 0 ) :
+                try : 
+                    procs_img = self.process_and_plot(image)
+                    video_writer.write(procs_img) 
+                except :
+                    print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", self.count)
+                    l1 =  self.lane.white_lower[1]
+                    self.lane.compute_bounds(image)
+                    print(l1,"->",self.lane.white_lower[1])
         print("SKIPPED {:d} BREACHED {:d} RESET {:d} APPENDED {:d} | Total {:d} ".\
-            format(frame.lane.n_gap_skip, frame.lane.lane.breached,\
-                frame.lane.lane.reset,frame.lane.lane.appended, frame.count))
+            format(self.lane.n_gap_skip, self.lane.lane.breached,\
+                self.lane.lane.reset,self.lane.lane.appended, self.count))
+        print("SAVED TO ", video_out)
         video_reader.release()
         video_writer.release() 
         cv2.destroyAllWindows()
@@ -273,50 +277,27 @@ class FRAME :
         return
         
 if __name__ == "__main__":
-    from tqdm import tqdm
     
-    # video_reader =  cv2.VideoCapture("videos/challenge_video.mp4") 
-    video_reader =  cv2.VideoCapture("videos/challenge_video_edit.mp4") 
-    # video_reader =  cv2.VideoCapture("videos/harder_challenge_video.mp4") 
-    # video_reader =  cv2.VideoCapture("videos/nice_road.mp4")
-    # video_reader =  cv2.VideoCapture("videos/nh60.mp4")
-    fps =  video_reader.get(cv2.CAP_PROP_FPS)
-    fps_factor = 2
-    fps_adjusted =  fps//fps_factor
-    nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
-    frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output11.mov"
-    video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time =14#180# 310# seconds
-    pers_frame = int(pers_frame_time *fps)
-    video_reader.set(1,pers_frame)
-    ret, image = video_reader.read()
-    frame = FRAME(image=image, fps =  fps_adjusted, verbose =2)
-    frames = nb_frames
-    t0  =.180#310 # sec
-    t1 = int(frames/fps) #sec
-    dur = t1 -t0
-    video_reader.set(1,t0*fps)
-    # start = datetime.utcnow().timestamp()
-    for i in tqdm(range(int(t0*fps), int(t1*fps)),mininterval=3):
-        if i % fps_factor == 0 :  
-            status, image = video_reader.read()
-            if  status :
-                try : 
-                    procs_img = frame.process_and_plot(image)
-                    video_writer.write(procs_img) 
-                except :
-                    print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", frame.count)
-                    l1 =  frame.lane.white_lower[1]
-                    frame.lane.compute_bounds(image)
-                    print(l1,"->",frame.lane.white_lower[1])
-    # stop =datetime.utcnow().timestamp()
-    print("SKIPPED {:d} BREACHED {:d} RESET {:d} APPENDED {:d} | Total {:d} ".\
-         format(frame.lane.n_gap_skip, frame.lane.lane.breached,\
-             frame.lane.lane.reset,frame.lane.lane.appended, frame.count))
-    video_reader.release()
-    video_writer.release() 
-    cv2.destroyAllWindows()
+    
+    # file_path =  "videos/challenge_video.mp4"
+    # file_path =  "videos/challenge_video_edit.mp4"
+    # file_path =  "videos/harder_challenge_video.mp4"
+    file_path =  "videos/nice_road.mp4"
+    # file_path =  "videos/nh60.mp4"
+    video_out = "videos/output10.mov"
+    frame =  FRAME( 
+        yellow_lower = np.uint8([ 20, 50,   50]),
+        yellow_upper = np.uint8([35, 255, 255]),
+        white_lower = np.uint8([ 0, 200,   0]),
+        white_upper = np.uint8([180, 255, 30]), 
+        lum_factor = 100,
+        max_gap_th = 0.45,
+        YOLO_PERIOD = 2,
+        lane_start=[0.35,0.75] , 
+        verbose = 3)
+    frame.process_video(file_path, 2,\
+            video_out = video_out,pers_frame_time =180,\
+            t0  =180 , t1 =195)
+    
 
 

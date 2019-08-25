@@ -384,12 +384,12 @@ class LANE_DETECTION:
         self.inv_trans_mat = cv2.getPerspectiveTransform(dst_points,src_points)
         min_wid = 1000
         img = cv2.warpPerspective(self.image, self.trans_mat, self.UNWARPED_SIZE)
+        x1 = int(self.UNWARPED_SIZE[0]*lane_start[0])
+        x2 = int(self.UNWARPED_SIZE[0]*lane_start[1])
         self.lane.leftx.append(x1)
         self.lane.rightx.append(x2)
         mask = self.compute_mask(img) 
         # x = np.linspace(0,mask.shape[0]-1,mask.shape[0])
-        x1 = int(self.UNWARPED_SIZE[0]*lane_start[0])
-        x2 = int(self.UNWARPED_SIZE[0]*lane_start[1]) 
         span = self.UNWARPED_SIZE[0]//5 
         x1 = x1-span + self.detect_lane_start(mask[:,x1-span :x1+span])
         x2 = x2-span + self.detect_lane_start(mask[:,x2-span :x2+span])
@@ -423,6 +423,7 @@ class LANE_DETECTION:
         pos = np.array((self.vanishing_point[0], bottom )).reshape(1, 1, -1)
         dst =  cv2.perspectiveTransform(pos, self.trans_mat).reshape(2)
         self.lane.centerx = dst[0]
+        print("PERSPECTIVE TRANSFORMATION MATRIX COMPUTED")
         if self.verbose  > 1:       
             img_orig = cv2.polylines(self.image, [src_points.astype(np.int32)],True, (0,0,255), thickness=5)
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
