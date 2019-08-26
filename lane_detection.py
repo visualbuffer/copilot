@@ -239,10 +239,10 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 21
+    windows_per_line = 30
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
-    ego_vehicle_in_frame=True
+    ego_vehicle_in_frame=False
     font = cv2.FONT_HERSHEY_SIMPLEX
     bottom = 0
     def __init__(self,  img,fps,
@@ -343,8 +343,8 @@ class LANE_DETECTION:
                 [0, self.img_dimensions[0]],
                 [self.img_dimensions[1], self.img_dimensions[0]],
                 [self.img_dimensions[1], self.img_dimensions[0]*8//9],
-                [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
-                [self.img_dimensions[1]*10//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
+                [self.img_dimensions[1]*45//99,self.img_dimensions[0]//2],
+                [self.img_dimensions[1]*45//99,self.img_dimensions[0]//2]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
         Lhs = np.zeros((2,2), dtype= np.float32)
@@ -352,11 +352,11 @@ class LANE_DETECTION:
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         mn_hsl = np.median(grey)
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
-        lines = cv2.HoughLinesP(edges*roi,rho =self.img_dimensions[0]//25,\
+        lines = cv2.HoughLinesP(edges*roi,rho =self.img_dimensions[0]//20,\
                 theta = 2* np.pi/180,\
                 threshold = self.img_dimensions[0]//80,\
                 minLineLength = self.img_dimensions[0]//3,\
-                maxLineGap = self.img_dimensions[0]//4)
+                maxLineGap = self.img_dimensions[0]//15)
 
         img2 =  self.image.copy()
         for line in lines:
@@ -449,6 +449,7 @@ class LANE_DETECTION:
             cv2.imwrite(self.temp_dir+"mask.jpg",mask)
             img = cv2.bitwise_and(img, img, mask =  mask )
             cv2.imwrite(self.temp_dir+"masked_regions.jpg",img)
+            cv2.imwrite(self.temp_dir+"edges.jpg",edges*roi)
             return img_orig
         return
 
