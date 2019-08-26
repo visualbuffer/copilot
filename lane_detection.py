@@ -593,16 +593,12 @@ class LANE_DETECTION:
         Returns an image where the computed lane lines have been drawn on top of the original warped binary image
         """
         out_img = img.copy()
-        pts_left = np.dstack((self.lane.leftFit, self.ploty)).astype(np.int32)
-        pts_right = np.dstack((self.lane.rightFit, self.ploty)).astype(np.int32)
 
-        cv2.polylines(out_img, pts_left, False, BLUE, 5)
-        cv2.polylines(out_img, pts_right, False, RED, 5)
         for low_pt, high_pt in self.lane.left_windows:
-            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)
+            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 1)
 
         for low_pt, high_pt in self.lane.right_windows:            
-            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3) 
+            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 1) 
     
         return out_img    
     
@@ -618,13 +614,19 @@ class LANE_DETECTION:
         out_img = img.copy()
         lx =  self.lane.x - self.lane.width//2
         rx = self.lane.x + self.lane.width//2 
+
+        pts_left = np.dstack((self.lane.leftFit, self.ploty)).astype(np.int32)
+        pts_right = np.dstack((self.lane.rightFit, self.ploty)).astype(np.int32)
+        pts_cntr = np.dstack((self.lane.rightFit - self.lane.width//2, self.ploty)).astype(np.int32)
+        cv2.polylines(out_img, pts_left, False, BLUE, 2)
+        cv2.polylines(out_img, pts_right, False, RED, 2)
+        cv2.polylines(out_img, pts_right, False, YELLOW, 2)
         for i in range(len(self.lane.x)) :
             cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, BLUE, -1)
             cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, RED, -1)
         for i in range(len(obstacles)):
             box =  obstacles[i]
-            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)    
-        cv2.imwrite(self.temp_dir+"temp3.jpg", out_img)   
+            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)     
         return out_img
 
   

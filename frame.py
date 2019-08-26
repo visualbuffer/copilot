@@ -286,8 +286,8 @@ if __name__ == "__main__":
     # file_path =  "videos/challenge_video_edit.mp4"    #145
     # file_path =  "videos/harder_challenge_video.mp4"  
     # file_path =  "videos/nice_road.mp4"               #110 62
-    file_path =  "videos/us-highway.mp4"               #110 62
-    # file_path =  "videos/nh60.mp4"                      
+    # file_path =  "videos/us-highway.mp4"               #118 143
+    file_path =  "videos/nh60.mp4"                      
     video_out = "videos/output11.mov"
     frame =  FRAME( 
         yellow_lower = np.uint8([ 25, 50,   100]),
@@ -300,8 +300,8 @@ if __name__ == "__main__":
         lane_start=[0.35,0.75] , 
         verbose = 3)
     frame.process_video(file_path, 2,\
-            video_out = video_out,pers_frame_time =143,\
-            t0  =None , t1 =160)#None)
+            video_out = video_out,pers_frame_time =17,\
+            t0  =None , t1 =42)#None)
     
 
 
