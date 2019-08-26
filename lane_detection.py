@@ -521,10 +521,7 @@ class LANE_DETECTION:
         if self.verbose >2 : 
             
             drawn_lines = self.draw_lane_lines(out_img)        
-            # drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
             drawn_hotspots = self.draw_lines_hotspots(out_img, obstacles)
-            cv2.imwrite(self.temp_dir+"temp1.jpg",img)
-            cv2.imwrite(self.temp_dir+"temp2.jpg",drawn_hotspots)
             img = self.combine_images(img, drawn_lines,drawn_hotspots)
             img = self.draw_lane_curvature_text(img,)
             
