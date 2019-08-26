@@ -620,7 +620,7 @@ class LANE_DETECTION:
         pts_cntr = np.dstack((self.lane.rightFit - self.lane.width//2, self.ploty)).astype(np.int32)
         cv2.polylines(out_img, pts_left, False, BLUE, 2)
         cv2.polylines(out_img, pts_right, False, RED, 2)
-        cv2.polylines(out_img, pts_right, False, YELLOW, 2)
+        cv2.polylines(out_img, pts_cntr, False, YELLOW, 2)
         for i in range(len(self.lane.x)) :
             cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, BLUE, -1)
             cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, RED, -1)
