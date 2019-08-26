@@ -477,7 +477,7 @@ class LANE_DETECTION:
 
         return 
     
-    def process_image(self, img,obstacles :[OBSTACLE] =[], alpha=1, beta=0.3, gamma=0):
+    def process_image(self, img,obstacles :[OBSTACLE] =[], alpha=.7, beta=0.3, gamma=0):
         """
         Attempts to find lane lines on the given image and returns an image with lane area colored in green
         as well as small intermediate images overlaid on top to understand how the algorithm is performing
