@@ -16,6 +16,7 @@ GREEN = (80, 220, 60)
 LIGHT_CYAN = (255, 255, 224)
 DARK_BLUE = (139, 0, 0)
 GRAY = (128, 128, 128)
+RED = (255,0,0)
 RED = (0,0,255)
 ORANGE =(0,165,255)
 BLACK =(0,0,0)
@@ -522,8 +523,11 @@ class LANE_DETECTION:
             drawn_lines = self.draw_lane_lines(out_img)        
             # drawn_lines_regions = self.draw_lane_lines_regions(out_img, ll, rl)
             drawn_hotspots = self.draw_lines_hotspots(out_img, obstacles)
+            cv2.imwrite(self.temp_dir+"temp1.jpg",img)
+            cv2.imwrite(self.temp_dir+"temp2.jpg",drawn_hotspots)
             img = self.combine_images(img, drawn_lines,drawn_hotspots)
             img = self.draw_lane_curvature_text(img,)
+            
         
         return img
     
@@ -578,7 +582,7 @@ class LANE_DETECTION:
         pts_left = np.array([np.transpose(np.vstack([self.lane.leftFit, self.ploty]))])
         pts_right = np.array([np.flipud(np.transpose(np.vstack([self.lane.rightFit, self.ploty])))])
         pts = np.hstack((pts_left, pts_right))
-        cv2.fillPoly(color_warp, np.int_([pts]), (0,255, 0))
+        cv2.fillPoly(color_warp, np.int_([pts]),GREEN)
         newwarp = cv2.warpPerspective(color_warp, self.inv_trans_mat, (undist_img.shape[1], undist_img.shape[0])) 
         result = cv2.addWeighted(undist_img, 1, newwarp, 0.3, 0)
         return result
@@ -592,8 +596,8 @@ class LANE_DETECTION:
         pts_left = np.dstack((self.lane.leftFit, self.ploty)).astype(np.int32)
         pts_right = np.dstack((self.lane.rightFit, self.ploty)).astype(np.int32)
 
-        cv2.polylines(out_img, pts_left, False,  (255, 140,0), 5)
-        cv2.polylines(out_img, pts_right, False, (255, 140,0), 5)
+        cv2.polylines(out_img, pts_left, False, BLUE, 5)
+        cv2.polylines(out_img, pts_right, False, RED, 5)
         for low_pt, high_pt in self.lane.left_windows:
             cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)
 
@@ -615,8 +619,8 @@ class LANE_DETECTION:
         lx =  self.lane.x - self.lane.width//2
         rx = self.lane.x + self.lane.width//2 
         for i in range(len(self.lane.x)) :
-            cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, (255, 255, 0), -1)
-            cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, (0, 0, 255), -1)
+            cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, BLUE, -1)
+            cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, RED, -1)
         for i in range(len(obstacles)):
             box =  obstacles[i]
             cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)    
