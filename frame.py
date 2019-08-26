@@ -219,9 +219,11 @@ class FRAME :
     def process_video(self, file_path, fps_factor,\
             video_out = "videos/output11.mov",pers_frame_time =14,\
             t0  =None , t1 =None ):
+
+        
         video_reader =  cv2.VideoCapture(file_path) 
         fps_actual =  video_reader.get(cv2.CAP_PROP_FPS)
-       
+
         self.fps =  fps_actual//fps_factor
         nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -229,6 +231,7 @@ class FRAME :
         print("{:s} WIDTH {:d} HEIGHT {:d} FPS {:.2f} DUR {:.1f} s".format(\
             file_path,frame_w,frame_h,fps_actual,nb_frames//fps_actual
             ))
+
         video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),self.fps, (frame_w, frame_h))
         #180# 310# seconds
         pers_frame = int(pers_frame_time *fps_actual)
@@ -279,25 +282,26 @@ class FRAME :
 if __name__ == "__main__":
     
     
-    # file_path =  "videos/challenge_video.mp4"
-    # file_path =  "videos/challenge_video_edit.mp4"
-    # file_path =  "videos/harder_challenge_video.mp4"
-    file_path =  "videos/nice_road.mp4"
-    # file_path =  "videos/nh60.mp4"
-    video_out = "videos/output10.mov"
+    # file_path =  "videos/challenge_video.mp4"         # 145
+    # file_path =  "videos/challenge_video_edit.mp4"    #145
+    # file_path =  "videos/harder_challenge_video.mp4"  
+    # file_path =  "videos/nice_road.mp4"               #110 62
+    file_path =  "videos/us-highway.mp4"               #110 62
+    # file_path =  "videos/nh60.mp4"                      
+    video_out = "videos/output11.mov"
     frame =  FRAME( 
-        yellow_lower = np.uint8([ 20, 50,   50]),
+        yellow_lower = np.uint8([ 25, 50,   100]),
         yellow_upper = np.uint8([35, 255, 255]),
         white_lower = np.uint8([ 0, 200,   0]),
-        white_upper = np.uint8([180, 255, 30]), 
-        lum_factor = 100,
+        white_upper = np.uint8([180, 255, 100]), 
+        lum_factor = 118,
         max_gap_th = 0.45,
         YOLO_PERIOD = 2,
         lane_start=[0.35,0.75] , 
         verbose = 3)
     frame.process_video(file_path, 2,\
-            video_out = video_out,pers_frame_time =180,\
-            t0  =180 , t1 =195)
+            video_out = video_out,pers_frame_time =143,\
+            t0  =None , t1 =160)#None)
     
 
 

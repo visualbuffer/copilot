@@ -238,10 +238,10 @@ class LANE_DETECTION:
     _pip__y_offset=10
     img_dimensions=(int,int)
     temp_dir = "./images/detection/"
-    windows_per_line = 40
+    windows_per_line = 21
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
-    ego_vehicle_in_frame=False
+    ego_vehicle_in_frame=True
     font = cv2.FONT_HERSHEY_SIMPLEX
     bottom = 0
     def __init__(self,  img,fps,
@@ -249,7 +249,7 @@ class LANE_DETECTION:
             yellow_upper = np.uint8([35, 255, 255]),
             white_lower = np.uint8([ 0, 200,   0]),
             white_upper = np.uint8([180, 255, 100]), 
-            lum_factor = 150,
+            lum_factor = 130,
             max_gap_th = 2/5,
             lane_start=[0.35,0.75] , 
             verbose = 3):
@@ -273,7 +273,7 @@ class LANE_DETECTION:
         self.image =  img
         self.font_sz = 4e-4 * self.image.shape[0]
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
-        self.UNWARPED_SIZE  = (320,320)#(int(self.img_dimensions[1]*0.5),int(self.img_dimensions[1]*0.5))
+        self.UNWARPED_SIZE  = (720,720)#(int(self.img_dimensions[1]*0.5),int(self.img_dimensions[1]*0.5))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.15)
         self.margin = int(self.UNWARPED_SIZE[1]*0.08)
         self.window_height = np.int(self.UNWARPED_SIZE[1]//self.windows_per_line)
@@ -302,12 +302,12 @@ class LANE_DETECTION:
 
     def compute_bounds(self, image):
         lx = int( max( np.mean(self.lane.leftx),0))
-        rx =  int(max(min(np.mean(self.lane.rightx), image.shape[0]),lx))
+        rx =  int(max(min(np.mean(self.lane.rightx), image.shape[0]),max(image.shape[0]//4,lx)))
 
         avg = np.average(image[lx:rx,\
-            image.shape[1]*2//3 : image.shape[1]-self.bottom,1])
+            image.shape[1]//2 : image.shape[1]-self.bottom,1])
         l_rel =  max(min((avg/self.lum_factor)**2,1.3),0.45)
-        self.yellow_lower[1] = int(l_rel*25)
+        self.yellow_lower[1] = int(l_rel*30)
         self.white_lower[1] = int(l_rel *170)
         self.message = self.message+"WHITE" + str(self.white_lower[1])
         return
@@ -327,24 +327,35 @@ class LANE_DETECTION:
         mask = cv2.bitwise_or(white_mask, yellow_mask)
         # t2 =  cv2.bitwise_and(image, image, mask = mask)
         # cv2.imwrite(self.temp_dir+"temp2.jpg", t2)
+        # print(self.white_lower[1])
         return mask
 
     def calc_perspective(self,  lane_start=[0.25,0.75]):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]*8//9],
-                    [0, self.img_dimensions[0]],
-                    [self.img_dimensions[1], self.img_dimensions[0]],
-                    [self.img_dimensions[1], self.img_dimensions[0]*8//9],
-                    [self.img_dimensions[1]*15//23,self.img_dimensions[0]*13//23],
-                    [self.img_dimensions[1]*9//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
+        if self.ego_vehicle_in_frame :
+            roi_points = np.array([[0, self.img_dimensions[0]*4//5],
+                        [self.img_dimensions[1], self.img_dimensions[0]*4//5],
+                        [self.img_dimensions[1]*45//99,self.img_dimensions[0]*5//11],
+                        [self.img_dimensions[1]*44//99,self.img_dimensions[0]*5//11]], dtype=np.int32)
+        else :
+            roi_points = np.array([[0, self.img_dimensions[0]*8//9],
+                [0, self.img_dimensions[0]],
+                [self.img_dimensions[1], self.img_dimensions[0]],
+                [self.img_dimensions[1], self.img_dimensions[0]*8//9],
+                [self.img_dimensions[1]*13//23,self.img_dimensions[0]*13//23],
+                [self.img_dimensions[1]*10//23,self.img_dimensions[0]*13//23]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
         self.lane_roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8)
         Lhs = np.zeros((2,2), dtype= np.float32)
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        mn_hsl = np.median(grey) #grey.median()
+        mn_hsl = np.median(grey)
         edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
-        lines = cv2.HoughLinesP(edges*roi,rho =12,theta = 2* np.pi/180,threshold = 6,minLineLength = self.img_dimensions[0]//3,maxLineGap = self.img_dimensions[0]//15)
+        lines = cv2.HoughLinesP(edges*roi,rho =self.img_dimensions[0]//25,\
+                theta = 2* np.pi/180,\
+                threshold = self.img_dimensions[0]//80,\
+                minLineLength = self.img_dimensions[0]//3,\
+                maxLineGap = self.img_dimensions[0]//4)
 
         img2 =  self.image.copy()
         for line in lines:
@@ -356,13 +367,13 @@ class LANE_DETECTION:
                 outer = np.matmul(normal, normal.T)
                 Lhs += outer
                 Rhs += np.matmul(outer, point)
-        self.vanishing_point= np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
-
-        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.02 *self.img_dimensions[1] :
-            print("ABSURD POSITION TRY OTHER PARAMETERS",self.vanishing_point , "FOR",self.img_dimensions )
+        self.vanishing_point = np.matmul(np.linalg.inv(Lhs),Rhs).reshape(2)
+        orig_points=self.vanishing_point.copy() 
+        if abs(self.vanishing_point[0] - self.img_dimensions[1]//2) > 0.07 *self.img_dimensions[1] :
+            print("ABSURD X POSITION TRY OTHER PARAMETERS",self.vanishing_point[0] , "in ==> ",self.img_dimensions )
             self.vanishing_point[0] = self.img_dimensions[1]//2
-        if abs(self.vanishing_point[1] - self.img_dimensions[0]*0.57) > 0.05 *self.img_dimensions[0] :
-            print("ABSURD POSITION TRY OTHER PARAMETERS",self.vanishing_point , "FOR",self.img_dimensions )
+        if abs(self.vanishing_point[1] - self.img_dimensions[0]*0.57) > 0.1 *self.img_dimensions[0] :
+            print("ABSURD Y POSITION TRY OTHER PARAMETERS",self.vanishing_point[0] , "in ==>",self.img_dimensions )
             self.vanishing_point[1] = int(self.img_dimensions[0]*0.57)
         top =self.vanishing_point[1] + int(self.WRAPPED_WIDTH*0.15)
         self.bottom  = int(0.02*self.img_dimensions[0])
@@ -429,7 +440,8 @@ class LANE_DETECTION:
             cv2.line(img, (int(x1), 0), (int(x1), self.UNWARPED_SIZE[1]), (255, 0, 0), 3)
             cv2.line(img, (int(x2), 0), (int(x2), self.UNWARPED_SIZE[1]), (0, 0, 255), 3)
 
-            cv2.circle(img_orig,tuple(self.vanishing_point),10, color=(0,0,255), thickness=5)
+            cv2.circle(img_orig,tuple(self.vanishing_point),10, color=RED, thickness=5)
+            cv2.circle(img_orig,tuple(orig_points),10, color=GRAY, thickness=4)
             cv2.imwrite(self.temp_dir+"vanishing_point.jpg",img_orig)
             cv2.imwrite(self.temp_dir+"lane_width.jpg",img)
             cv2.imwrite(self.temp_dir+"perspective_lines.jpg",img2)
@@ -486,11 +498,12 @@ class LANE_DETECTION:
             pt1 = (box.xmin, box.ymin-off)
             pt2 =  (box.xmin, box.ymin)
             pb1 = (box.xmin, box.ymax+off)
-            if (box.lane == "my") and (box.col_time < 99) : 
+            if (box.lane == "my") and (box.velocity[1] < 0) : 
                 color = RED
-                b3 = "Col "+str(int(box.col_time))+"s"
-                pb3 =  (box.xmin, box.ymax+2*off)
-                self.put_text(overlay, b3,   pb3, color = color)
+                if box.col_time > -4 :
+                    b3 = "Col "+str(int(box.col_time))+"s"
+                    pb3 =  (box.xmin, box.ymax+2*off)
+                    self.put_text(overlay, b3,   pb3, color = color)
             
             self.put_text(overlay, t1,   pt1, color = color)
             self.put_text(overlay, t2,   pt2, color = color)
@@ -581,12 +594,12 @@ class LANE_DETECTION:
 
         cv2.polylines(out_img, pts_left, False,  (255, 140,0), 5)
         cv2.polylines(out_img, pts_right, False, (255, 140,0), 5)
-        
         for low_pt, high_pt in self.lane.left_windows:
             cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)
 
         for low_pt, high_pt in self.lane.right_windows:            
-            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3)         
+            cv2.rectangle(out_img, low_pt, high_pt, (0, 255, 0), 3) 
+    
         return out_img    
     
     
@@ -607,6 +620,7 @@ class LANE_DETECTION:
         for i in range(len(obstacles)):
             box =  obstacles[i]
             cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)    
+        cv2.imwrite(self.temp_dir+"temp3.jpg", out_img)   
         return out_img
 
   
@@ -717,7 +731,7 @@ class LANE_DETECTION:
 if __name__ == "__main__":
 
 
-    video_reader =  cv2.VideoCapture("videos/nice_road.mp4") 
+    video_reader =  cv2.VideoCapture("videos/us-highway.mp4") 
 
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -726,11 +740,11 @@ if __name__ == "__main__":
     video_out = "videos/output30.mov"
     # cv2.VideoWriter_fourcc(*'MPEG')
     video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 200#180# seconds
+    pers_frame_time = 143#180# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
-    ld = LANE_DETECTION( image,fps)
+    ld = LANE_DETECTION( image,fps,lum_factor = 130,)
     # pers_frame_time = 130# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
