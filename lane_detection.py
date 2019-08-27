@@ -618,13 +618,16 @@ class LANE_DETECTION:
         pts_cntr = np.dstack((self.lane.rightFit - self.lane.width//2, self.ploty)).astype(np.int32)
         cv2.polylines(out_img, pts_left, False, BLUE, 2)
         cv2.polylines(out_img, pts_right, False, RED, 2)
-        cv2.polylines(out_img, pts_cntr, False, YELLOW, 2)
+        cv2.polylines(out_img, pts_cntr, False, YELLOW, 15)
         for i in range(len(self.lane.x)) :
-            cv2.circle( out_img,( lx[i],-self.lane.y[i]), 8, BLUE, -1)
-            cv2.circle( out_img,( rx[i],-self.lane.y[i]), 8, RED, -1)
+            cv2.circle( out_img,( lx[i],-self.lane.y[i]), 4, BLUE, -1)
+            cv2.circle( out_img,( rx[i],-self.lane.y[i]), 4, RED, -1)
         for i in range(len(obstacles)):
             box =  obstacles[i]
-            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, GREEN, 8, cv2.LINE_AA)     
+            color = GREEN
+            if (box.col_time) and (box.lane == "my") and (box.col_time < 0) and (box.col_time>-4) :
+                color = RED
+            cv2.putText(out_img,str(box._id),(box.x, -box.y), self.font, sz, color, 8, cv2.LINE_AA)     
         return out_img
 
   
