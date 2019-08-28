@@ -22,9 +22,9 @@ class FRAME :
     white_upper = np.uint8([180, 255, 100]), 
     lum_factor = 150,
     max_gap_th = 2/5,
-    lane_start=[0.35,0.75] , 
+    lane_start=[0.35,0.75]  
 
-
+    ego_vehicle_offset = 0
     time =  datetime.utcnow().timestamp()
     l_gap_skipped = 0
     l_breached = 0 
@@ -45,6 +45,7 @@ class FRAME :
         "image" : [],
         "LANE_WIDTH" :  3.66,
         "fps" :22,
+        "ego_vehicle_offset" : 0,
         'verbose' :  3,
         'YOLO_PERIOD' : 2,
         "yellow_lower" : np.uint8([ 20, 50,   50]),
@@ -228,16 +229,19 @@ class FRAME :
         nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
         frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_h_out =  int(frame_h*(1-self.ego_vehicle_offset))
         print("{:s} WIDTH {:d} HEIGHT {:d} FPS {:.2f} DUR {:.1f} s".format(\
             file_path,frame_w,frame_h,fps_actual,nb_frames//fps_actual
             ))
 
-        video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),self.fps, (frame_w, frame_h))
+        video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'),self.fps, (frame_w, frame_h_out))
         #180# 310# seconds
         pers_frame = int(pers_frame_time *fps_actual)
         video_reader.set(1,pers_frame)
         _, self.image = video_reader.read()
+        self.image = self.image[:frame_h_out,:,:]
         self.img_shp =  (self.image.shape[1], self.image.shape[0] )
+        # self.ego_vehicle_offset = self.img_shp[0]*int(1-self.ego_vehicle_offset)
         self.area =  self.img_shp[0]*self.img_shp[1]
         self.lane = LANE_DETECTION(self.image, self.fps,\
             verbose=self.verbose, 
@@ -254,15 +258,17 @@ class FRAME :
         video_reader.set(1,t0*fps_actual)
         for i in tqdm(range(int(t0*fps_actual), int(t1*fps_actual)),mininterval=3):
             status, image = video_reader.read()
+
             if  status and (i % fps_factor == 0 ) :
-                try : 
-                    procs_img = self.process_and_plot(image)
-                    video_writer.write(procs_img) 
-                except :
-                    print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", self.count)
-                    l1 =  self.lane.white_lower[1]
-                    self.lane.compute_bounds(image)
-                    print(l1,"->",self.lane.white_lower[1])
+                image = image[:frame_h_out,:,:]
+                # try : 
+                procs_img = self.process_and_plot(image)
+                video_writer.write(procs_img) 
+                # except :
+                #     print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", self.count)
+                #     l1 =  self.lane.white_lower[1]
+                #     self.lane.compute_bounds(image)
+                #     print(l1,"->",self.lane.white_lower[1])
         print("SKIPPED {:d} BREACHED {:d} RESET {:d} APPENDED {:d} | Total {:d} ".\
             format(self.lane.n_gap_skip, self.lane.lane.breached,\
                 self.lane.lane.reset,self.lane.lane.appended, self.count))
@@ -286,22 +292,23 @@ if __name__ == "__main__":
     # file_path =  "videos/challenge_video_edit.mp4"    #145
     # file_path =  "videos/harder_challenge_video.mp4"  
     # file_path =  "videos/nice_road.mp4"               #110 62
-    # file_path =  "videos/us-highway.mp4"               #118 143
-    file_path =  "videos/nh60.mp4"                      
+    file_path =  "videos/us-highway.mp4"               #118 143
+    # file_path =  "videos/nh60.mp4"                      # 118 18                   
     video_out = "videos/output11.mov"
     frame =  FRAME( 
-        yellow_lower = np.uint8([ 25, 50,   100]),
+        ego_vehicle_offset = .15,
+        yellow_lower = np.uint8([ 20, 50,   100]),
         yellow_upper = np.uint8([35, 255, 255]),
         white_lower = np.uint8([ 0, 200,   0]),
         white_upper = np.uint8([180, 255, 100]), 
         lum_factor = 118,
         max_gap_th = 0.45,
-        YOLO_PERIOD = 2,
+        YOLO_PERIOD = .25,
         lane_start=[0.35,0.75] , 
         verbose = 3)
-    frame.process_video(file_path, 2,\
-            video_out = video_out,pers_frame_time =17,\
-            t0  =None , t1 =42)#None)
+    frame.process_video(file_path, 1,\
+            video_out = video_out,pers_frame_time =144,\
+            t0  =144 , t1 =150)#None)
     
 
 

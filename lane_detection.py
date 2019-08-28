@@ -242,7 +242,6 @@ class LANE_DETECTION:
     windows_per_line = 30
     vanishing_point:(int,int)
     real_world_lane_size_meters=(32, 3.7)
-    ego_vehicle_in_frame=False
     font = cv2.FONT_HERSHEY_SIMPLEX
     bottom = 0
     def __init__(self,  img,fps,
@@ -286,12 +285,8 @@ class LANE_DETECTION:
         self.n_gap_skip = 0
         self.max_gap = 0
 
-        if self.ego_vehicle_in_frame :
-            self.windows_range = range(int(self.windows_per_line*0.05), self.windows_per_line, 1)
-            self.window_offset = int(self.windows_per_line*0.05)
-        else:
-            self.windows_range = range( self.windows_per_line)
-            self.window_offset = 0 
+        self.windows_range = range( self.windows_per_line)
+        self.window_offset = 0 
         self.ploty = np.linspace(int(self.UNWARPED_SIZE[1]*0.45), self.UNWARPED_SIZE[1]- 1, int(self.UNWARPED_SIZE[1]*0.4), dtype=int)
 
         test = np.arange(0.3,1,0.1)*self.UNWARPED_SIZE[1]
@@ -333,13 +328,7 @@ class LANE_DETECTION:
 
     def calc_perspective(self,  lane_start=[0.25,0.75]):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        if self.ego_vehicle_in_frame :
-            roi_points = np.array([[0, self.img_dimensions[0]*4//5],
-                        [self.img_dimensions[1], self.img_dimensions[0]*4//5],
-                        [self.img_dimensions[1]*45//99,self.img_dimensions[0]*5//11],
-                        [self.img_dimensions[1]*44//99,self.img_dimensions[0]*5//11]], dtype=np.int32)
-        else :
-            roi_points = np.array([[0, self.img_dimensions[0]*8//9],
+        roi_points = np.array([[0, self.img_dimensions[0]*8//9],
                 [0, self.img_dimensions[0]],
                 [self.img_dimensions[1], self.img_dimensions[0]],
                 [self.img_dimensions[1], self.img_dimensions[0]*8//9],
