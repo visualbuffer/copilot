@@ -418,10 +418,10 @@ class YOLO:
 
         # determine the new size of the image
         if (float(self.net_w)/new_w) < (float(self.net_h)/new_h):
-            new_h = (new_h * self.net_w)/new_w
+            new_h = int((new_h * self.net_w)/new_w)
             new_w = self.net_w
         else:
-            new_w = (new_w * self.net_h)/new_h
+            new_w = int((new_w * self.net_h)/new_h)
             new_h = self.net_h
 
         # resize the image to the new size
@@ -429,7 +429,7 @@ class YOLO:
 
         # embed the image into the standard letter box
         new_image = np.ones((self.net_h, self.net_w, 3)) * 0.5
-        new_image[int((self.net_h-new_h)//2):int((self.net_h+new_h)//2), int((self.net_w-new_w)//2):int((self.net_w+new_w)//2), :] = resized
+        new_image[int((self.net_h-new_h)/2):int((self.net_h+new_h)/2), int((self.net_w-new_w)/2):int((self.net_w+new_w)/2), :] = resized
         new_image = np.expand_dims(new_image, 0)
 
         return new_image
