@@ -273,7 +273,7 @@ class LANE_DETECTION:
         self.image =  img
         self.font_sz = 4e-4 * self.image.shape[0]
         self.img_dimensions =  (self.image.shape[0], self.image.shape[1]) 
-        self.UNWARPED_SIZE  = (720,720)#(int(self.img_dimensions[1]*0.5),int(self.img_dimensions[1]*0.5))
+        self.UNWARPED_SIZE  = (360,360)#(int(self.img_dimensions[1]*0.5),int(self.img_dimensions[1]*0.5))
         self.WRAPPED_WIDTH =  int(self.img_dimensions[1]*0.15)
         self.margin = int(self.UNWARPED_SIZE[1]*0.08)
         self.window_height = np.int(self.UNWARPED_SIZE[1]//self.windows_per_line)
