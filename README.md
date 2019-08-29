@@ -29,7 +29,7 @@ from frame import FRAME
 file_path =  "videos/highway.mp4"# <== Upload appropriate file          
 video_out = "videos/output11.mov"
 frame =  FRAME( 
-    ego_vehicle_offset = .15,                       # 
+    ego_vehicle_offset = .15,                       # SELF VEHICLE OFFSET
     yellow_lower = np.uint8([ 20, 50,   100]),      # LOWER YELLOW HLS THRESHOLD
     yellow_upper = np.uint8([35, 255, 255]),        # UPER YELLOW HLS THRESHOLD
     white_lower = np.uint8([ 0, 200,   0]),         # LOWER WHITE THRESHOLD
@@ -45,6 +45,7 @@ frame.process_video(file_path, 1,\
 ```
 | PARAMETER  | Description |
 | ------------- | ------------- |
+|SELF VEHICLE OFFSET| Trim off from bottom edge video if ego vehicle covers part of the frame % of front view|
 | LOWER YELLOW HLS THRESHOLD  | Lower yellow HLS threshold used to prepare the mask. Tune down if yellow lane is not detected, up if all the foilage is  |
 | UPPER YELLOW HLS THRESHOLD | Upper threshold for identifying yellow lanes |
 |LOWER WHITE THRESHOLD| Lower yellow HLS threshold used to prepare the mask. Tune up  saturation if  foilage lights up the entire scene  |
