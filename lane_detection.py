@@ -712,6 +712,7 @@ class LANE_DETECTION:
                 self.message+="SKIPPED  "+ str(self.max_gap)
                 self.count+=1
                 self.n_gap_skip+=1
+                self.lane.compute_offset()
                 self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS))
                 return warped_img
             status , message =  self.lane.addlane(pointy,np.array(pointx) )
