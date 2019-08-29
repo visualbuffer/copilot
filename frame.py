@@ -100,7 +100,7 @@ class FRAME :
         return cv2.perspectiveTransform(pos, self.lane.trans_mat)
 
     def determine_stats(self):
-        n = 5
+        n = 30
         t  = datetime.utcnow().timestamp()
         dt = int(t - self.time)
         if self.count % (self.fps * n) == 0:
