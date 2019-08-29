@@ -261,14 +261,14 @@ class FRAME :
 
             if  status and (i % fps_factor == 0 ) :
                 image = image[:frame_h_out,:,:]
-                # try : 
-                procs_img = self.process_and_plot(image)
-                video_writer.write(procs_img) 
-                # except :
-                #     print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", self.count)
-                #     l1 =  self.lane.white_lower[1]
-                #     self.lane.compute_bounds(image)
-                #     print(l1,"->",self.lane.white_lower[1])
+                try : 
+                     procs_img = self.process_and_plot(image)
+                     video_writer.write(procs_img) 
+                except :
+                     print("\n\rGOT EXEPTION TO PROCES THE IMAGE\033[F", self.count)
+                     l1 =  self.lane.white_lower[1]
+                     self.lane.compute_bounds(image)
+                     print(l1,"->",self.lane.white_lower[1])
         print("SKIPPED {:d} BREACHED {:d} RESET {:d} APPENDED {:d} | Total {:d} ".\
             format(self.lane.n_gap_skip, self.lane.lane.breached,\
                 self.lane.lane.reset,self.lane.lane.appended, self.count))
