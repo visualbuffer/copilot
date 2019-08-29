@@ -340,7 +340,7 @@ class LANE_DETECTION:
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         mn_hsl = np.median(grey)
-        edges = cv2.Canny(grey, int(mn_hsl*2), int(mn_hsl*.4))
+        edges = cv2.Canny(grey, int(mn_hsl*1.5), int(mn_hsl*.3))
         lines = cv2.HoughLinesP(edges*roi,rho =self.img_dimensions[0]//20,\
                 theta = 2* np.pi/180,\
                 threshold = self.img_dimensions[0]//80,\
@@ -727,26 +727,26 @@ class LANE_DETECTION:
 if __name__ == "__main__":
 
 
-    video_reader =  cv2.VideoCapture("videos/us-highway.mp4") 
+    video_reader =  cv2.VideoCapture("videos/nice_road.mp4") 
 
     fps =  video_reader.get(cv2.CAP_PROP_FPS)
     nb_frames = int(video_reader.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_h = int(video_reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(video_reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_out = "videos/output30.mov"
-    # cv2.VideoWriter_fourcc(*'MPEG')
-    video_writer = cv2.VideoWriter(video_out,cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), fps, (frame_w, frame_h))
-    pers_frame_time = 143#180# seconds
+    pers_frame_time = 398#180# seconds
     pers_frame = int(pers_frame_time *fps)
     video_reader.set(1,pers_frame)
     ret, image = video_reader.read()
-    ld = LANE_DETECTION( image,fps,lum_factor = 130,)
-    # pers_frame_time = 130# seconds
-    pers_frame = int(pers_frame_time *fps)
-    video_reader.set(1,pers_frame)
-    ret, image = video_reader.read()
-    proc_img = ld.process_image(image)
-    cv2.imwrite("./images/detection/frame.jpg",proc_img)
+    ld = LANE_DETECTION( image,fps, 
+                        yellow_lower = np.uint8([ 20, 50,   110]),
+                        yellow_upper = np.uint8([35, 255, 255]),
+                        white_lower = np.uint8([ 0, 140,   0]), 
+                        white_upper = np.uint8([255, 255, 100]), 
+                        lum_factor = 110,
+                        lane_start=[0.2,0.5])
+
+
+
 
 
 
