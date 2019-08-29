@@ -340,7 +340,7 @@ class LANE_DETECTION:
         Rhs = np.zeros((2,1), dtype= np.float32)
         grey = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         mn_hsl = np.median(grey)
-        edges = cv2.Canny(grey, int(mn_hsl*1.5), int(mn_hsl*.3))
+        edges = cv2.Canny(grey, int(mn_hsl), int(mn_hsl*.3))
         lines = cv2.HoughLinesP(edges*roi,rho =self.img_dimensions[0]//20,\
                 theta = 2* np.pi/180,\
                 threshold = self.img_dimensions[0]//80,\
