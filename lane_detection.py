@@ -649,7 +649,7 @@ class LANE_DETECTION:
         nonzero = warped_img.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])  
-        self.lane.width= int(x2_av - x1_av)                
+        self.lane.width= max(int(x2_av - x1_av), self.margin*2)               
         centerx_current = (x2_av - x1_av) //2
         pointx = []
         pointy=[]
