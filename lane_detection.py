@@ -642,14 +642,15 @@ class LANE_DETECTION:
         
         x1_av =  int(np.average(self.lane.leftx))
         x2_av  = int(np.average(self.lane.rightx))
-        x1 = min(max(x1_av,self.margin), self.UNWARPED_SIZE[0]-self.margin*2)
-        x2 = max( min(x2_av,self.UNWARPED_SIZE[0]-self.margin-1), x1+self.margin*2)
+        self.lane.width= min(max(int(x2_av - x1_av), self.UNWARPED_SIZE[0]//3),self.UNWARPED_SIZE[0]//2)
+        x1 = min(max(x1_av,self.margin), self.UNWARPED_SIZE[0]-self.lane.width)
+        x2 = max( min(x2_av,self.UNWARPED_SIZE[0]-self.margin-1), self.lane.width)
         leftx_current = x1-self.margin + self.detect_lane_start(warped_img[:,x1-self.margin :x1+self.margin])
         rightx_current = x2-self.margin + self.detect_lane_start(warped_img[:,x2-self.margin :x2+self.margin])
         nonzero = warped_img.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])  
-        self.lane.width= min(max(int(x2_av - x1_av), self.UNWARPED_SIZE[0]//3),self.UNWARPED_SIZE[0]//2)
+        
         centerx_current = (x2_av - x1_av) //2
         pointx = []
         pointy=[]
@@ -712,7 +713,6 @@ class LANE_DETECTION:
                 self.message+="SKIPPED  "+ str(self.max_gap)
                 self.count+=1
                 self.n_gap_skip+=1
-                self.lane.compute_offset()
                 self.compute_bounds(cv2.cvtColor(pp_img, cv2.COLOR_BGR2HLS))
                 return warped_img
             status , message =  self.lane.addlane(pointy,np.array(pointx) )
