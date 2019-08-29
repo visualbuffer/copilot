@@ -1,7 +1,7 @@
 # Copilot : Driving assistance on mobile devices
 ### Lane and obstacle detection for active assistance during driving.
 
-![](./images/assets/Top-View.gif)
+![](./images/assets/Top-View.gif)<br> 
 *Vehicle* *Position* *+* *collision* *time* *superposed* *in* *the* *top* *view* 
 
 Imagine having a momentary loss of attention while driving down a highway, and immediately you hone letting off a auditory warning alerting you before you come too close to the vehicle infront. If you are overspeeding a message nudges you to slowdown. After you complete the drive you can see a summary of how safe or rash you have driven during this trip.
@@ -19,7 +19,7 @@ The technology already exists. The challenge is to to make it more accesible. I 
 ! wget -P ./model_data/ https://s3-ap-southeast-1.amazonaws.com/deeplearning-mat/backend.h5
 ```
 
-![](./images/assets/Lightness.gif)
+![](./images/assets/Lightness.gif)<br>
 *Robustness* *for* *different* *illumination* *conditions*
 
 ## USAGE EXAMPLE
@@ -45,5 +45,5 @@ frame.process_video(file_path, 1,\
 ```
 
 
-![](./images/assets/Lene-Change.gif)
+![](./images/assets/Lane-Change.gif)<br>
 *Detecting* *lane* *change* *automatically*
