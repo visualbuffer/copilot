@@ -301,7 +301,7 @@ class LANE_DETECTION:
         rx =  int(max(min(np.mean(self.lane.rightx), image.shape[0]),max(image.shape[0]//4,lx)))
 
         avg = np.average(image[lx:rx,\
-            image.shape[1]//2 : image.shape[1]-self.bottom,1])
+            image.shape[1]*2//3 : image.shape[1]-self.bottom,1])
         l_rel =  max(min((avg/self.lum_factor)**2,1.3),0.45)
         self.yellow_lower[1] = int(l_rel*30)
         self.white_lower[1] = int(l_rel *170)
