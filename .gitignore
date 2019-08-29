@@ -1,5 +1,4 @@
 *.jpg
-*.png
 *.weights
 *.h5
 logs/

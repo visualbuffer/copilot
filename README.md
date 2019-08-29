@@ -1,99 +1,49 @@
-# keras-yolo3
+# Copilot : Driving assistance on mobile devices
+### Lane and obstacle detection for active assistance during driving.
 
-[![license](https://img.shields.io/github/license/mashape/apistatus.svg)](LICENSE)
+(./images/assets/Top-View.gif)
+*Vehicle* *Position* *+* *collision* *time* *superposed* *in* *the* *top* *view* 
 
-## Introduction
+Imagine having a momentary loss of attention while driving down a highway, and immediately you hone letting off a auditory warning alerting you before you come too close to the vehicle infront. If you are overspeeding a message nudges you to slowdown. After you complete the drive you can see a summary of how safe or rash you have driven during this trip.
 
-A Keras implementation of YOLOv3 (Tensorflow backend) inspired by [allanzelener/YAD2K](https://github.com/allanzelener/YAD2K).
+Smart phones have come a long way and so have cars. The penetration of autonomous driving features are restricted to the few top end vehicles. An autonomous parking feature can set one back by an additional 5000$ at present and evertime it is recallibrated it can cost someting similar. Less than X% of the vehicles on the road have 
 
+The technology already exists. The challenge is to to make it more accesible. I remember the first time I saw the google maps ad Lets never get lost again. Google maps have since become an intergral part of driving. Voice prompts guiding us to nogotiate the turn, rerouting through a congested arterial road,  makes you wonder how we could do it in the era before the smart phones. Earlier there were GPS end terminals fitted onto the dashboard. At times you had to dial to a tele caller to help you navigate based on your GPS coordinates. Gmaps universal adoption took place over a decade. The transition to a copilot driving assitant should be much faster. 
 
----
+## DOWNLOAD WEIGHTS AND CODE
 
-## Quick Start
-
-1. Download YOLOv3 weights from [YOLO website](http://pjreddie.com/darknet/yolo/).
-2. Convert the Darknet YOLO model to a Keras model.
-3. Run YOLO detection.
-
-```
-wget https://pjreddie.com/media/files/yolov3.weights
-python convert.py yolov3.cfg yolov3.weights model_data/yolo.h5
-python yolo_video.py [OPTIONS...] --image, for image detection mode, OR
-python yolo_video.py [video_path] [output_path (optional)]
+```python
+! git clone https://github.com/visualbuffer/copilot.git
+! mv copilot/* ./
+! wget  -P ./model_data/  https://pjreddie.com/media/files/yolov3.weights
+! wget -P ./model_data/ https://s3-ap-southeast-1.amazonaws.com/deeplearning-mat/backend.h5
 ```
 
-For Tiny YOLOv3, just do in a similar way, just specify model path and anchor path with `--model model_file` and `--anchors anchor_file`.
+(./images/assets/Lightness.gif)
+*Robustness* *for* *different* *illumination* *conditions*
 
-### Usage
-Use --help to see usage of yolo_video.py:
+## USAGE EXAMPLE
+```python
+from frame import FRAME
+
+file_path =  "videos/highway.mp4"# <== Upload appropriate file          
+video_out = "videos/output11.mov"
+frame =  FRAME( 
+    ego_vehicle_offset = .15,
+    yellow_lower = np.uint8([ 20, 50,   100]),
+    yellow_upper = np.uint8([35, 255, 255]),
+    white_lower = np.uint8([ 0, 200,   0]),
+    white_upper = np.uint8([180, 255, 100]), 
+    lum_factor = 118,
+    max_gap_th = 0.45,
+    YOLO_PERIOD = .25,
+    lane_start=[0.35,0.75] , 
+    verbose = 3)
+frame.process_video(file_path, 1,\
+        video_out = video_out,pers_frame_time =144,\
+        t0  =144 , t1 =150)#None)
 ```
-usage: yolo_video.py [-h] [--model MODEL] [--anchors ANCHORS]
-                     [--classes CLASSES] [--gpu_num GPU_NUM] [--image]
-                     [--input] [--output]
 
-positional arguments:
-  --input        Video input path
-  --output       Video output path
 
-optional arguments:
-  -h, --help         show this help message and exit
-  --model MODEL      path to model weight file, default model_data/yolo.h5
-  --anchors ANCHORS  path to anchor definitions, default
-                     model_data/yolo_anchors.txt
-  --classes CLASSES  path to class definitions, default
-                     model_data/coco_classes.txt
-  --gpu_num GPU_NUM  Number of GPU to use, default 1
-  --image            Image detection mode, will ignore all positional arguments
-```
----
-
-4. MultiGPU usage: use `--gpu_num N` to use N GPUs. It is passed to the [Keras multi_gpu_model()](https://keras.io/utils/#multi_gpu_model).
-
-## Training
-
-1. Generate your own annotation file and class names file.  
-    One row for one image;  
-    Row format: `image_file_path box1 box2 ... boxN`;  
-    Box format: `x_min,y_min,x_max,y_max,class_id` (no space).  
-    For VOC dataset, try `python voc_annotation.py`  
-    Here is an example:
-    ```
-    path/to/img1.jpg 50,100,150,200,0 30,50,200,120,3
-    path/to/img2.jpg 120,300,250,600,2
-    ...
-    ```
-
-2. Make sure you have run `python convert.py -w yolov3.cfg yolov3.weights model_data/yolo_weights.h5`  
-    The file model_data/yolo_weights.h5 is used to load pretrained weights.
-
-3. Modify train.py and start training.  
-    `python train.py`  
-    Use your trained weights or checkpoint weights with command line option `--model model_file` when using yolo_video.py
-    Remember to modify class path or anchor path, with `--classes class_file` and `--anchors anchor_file`.
-
-If you want to use original pretrained weights for YOLOv3:  
-    1. `wget https://pjreddie.com/media/files/darknet53.conv.74`  
-    2. rename it as darknet53.weights  
-    3. `python convert.py -w darknet53.cfg darknet53.weights model_data/darknet53_weights.h5`  
-    4. use model_data/darknet53_weights.h5 in train.py
-
----
-
-## Some issues to know
-
-1. The test environment is
-    - Python 3.5.2
-    - Keras 2.1.5
-    - tensorflow 1.6.0
-
-2. Default anchors are used. If you use your own anchors, probably some changes are needed.
-
-3. The inference result is not totally the same as Darknet but the difference is small.
-
-4. The speed is slower than Darknet. Replacing PIL with opencv may help a little.
-
-5. Always load pretrained weights and freeze layers in the first stage of training. Or try Darknet training. It's OK if there is a mismatch warning.
-
-6. The training strategy is for reference only. Adjust it according to your dataset and your goal. And add further strategy if needed.
-
-7. For speeding up the training process with frozen layers train_bottleneck.py can be used. It will compute the bottleneck features of the frozen model first and then only trains the last layers. This makes training on CPU possible in a reasonable time. See [this](https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html) for more information on bottleneck features.
+(./images/assets/Lene-Change.gif)
+*Detecting* *lane* *change* *automatically*
