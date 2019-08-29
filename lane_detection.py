@@ -328,10 +328,10 @@ class LANE_DETECTION:
 
     def calc_perspective(self,  lane_start=[0.25,0.75]):
         roi = np.zeros((self.img_dimensions[0], self.img_dimensions[1]), dtype=np.uint8) # 720 , 1280
-        roi_points = np.array([[0, self.img_dimensions[0]*8//9],
+        roi_points = np.array([[0, self.img_dimensions[0]*7//9],
                 [0, self.img_dimensions[0]],
                 [self.img_dimensions[1], self.img_dimensions[0]],
-                [self.img_dimensions[1], self.img_dimensions[0]*8//9],
+                [self.img_dimensions[1], self.img_dimensions[0]*7//9],
                 [self.img_dimensions[1]*45//99,self.img_dimensions[0]//2],
                 [self.img_dimensions[1]*45//99,self.img_dimensions[0]//2]], dtype=np.int32)
         cv2.fillPoly(roi, [roi_points], 1)
