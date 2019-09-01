@@ -1,26 +1,27 @@
 # Copilot : Driving assistance on mobile devices
 ### Lane and obstacle detection for active assistance during driving.
 
+
+
 ![](./images/assets/Top-View.gif)<br> 
 *Vehicle* *Position* *+* *collision* *time* *superposed* *in* *the* *top* *view* 
 
-Imagine having a momentary loss of attention while driving down a highway, and immediately you hone letting off a auditory warning alerting you before you come too close to the vehicle infront. If you are overspeeding a message nudges you to slowdown. After you complete the drive you can see a summary of how safe or rash you have driven during this trip.
+Accompanying article https://towardsdatascience.com/copilot-driving-assistance-635e1a50f14
 
-Smart phones have come a long way and so have cars. The penetration of autonomous driving features are restricted to the few top end vehicles. An autonomous parking feature can set one back by an additional 5000$ at present and evertime it is recallibrated it can cost someting similar. Less than X% of the vehicles on the road have 
 
-The technology already exists. The challenge is to to make it more accesible. I remember the first time I saw the google maps ad Lets never get lost again. Google maps have since become an intergral part of driving. Voice prompts guiding us to nogotiate the turn, rerouting through a congested arterial road,  makes you wonder how we could do it in the era before the smart phones. Earlier there were GPS end terminals fitted onto the dashboard. At times you had to dial to a tele caller to help you navigate based on your GPS coordinates. Gmaps universal adoption took place over a decade. The transition to a copilot driving assitant should be much faster. 
+Global annual road accidents fatalities total about 1.5 million which is just about the population of Mauritius. 90% of these occur in low and middle income countries which have less than half of the total vehicles in the world. Advanced driver-assistance systems (ADAS) Lane detection, collision warning are present in less than 0.1% of the vehicles. They are almost non existent in developing countries.
+Median Smartphone ownership in emerging economies is about 10 times as high as that of four wheeler. While we already have semi autonomous vehicles running about in parts of the world. This repository checks how close we might come to using a mobile computing platform as an ADAS copilot. 
 
 ## DOWNLOAD WEIGHTS AND CODE
 
 ```python
 ! git clone https://github.com/visualbuffer/copilot.git
 ! mv copilot/* ./
-! wget  -P ./model_data/  https://pjreddie.com/media/files/yolov3.weights
 ! wget -P ./model_data/ https://s3-ap-southeast-1.amazonaws.com/deeplearning-mat/backend.h5
 ```
 
 ![](./images/assets/Lightness.gif)<br>
-*Robustness* *for* *different* *illumination* *conditions*
+*Robustness* *for* *different* *illumination* *conditions*z 
 
 ## USAGE EXAMPLE
 ```python
@@ -58,3 +59,13 @@ frame.process_video(file_path, 1,\
 
 ![](./images/assets/Lane-Change.gif)<br>
 *Detecting* *lane* *change* *automatically*
+
+
+## Notebooks
+| DIRECTORY  | COLAB |
+| ------------- | ------------- |
+|./notebooks/coPilot.ipynb|https://colab.research.google.com/drive/1CdqDXZqssDgSC35W4A-4Gp8kfqzyPKug|
+
+The front of the dashboard is one hot place. Even when we run a gps and sync music a phone is hot to touch after the 5 hour drive. But phones are getting better faster, rugged, efficient and generate less heat. Unlike the human driver a mobile device does not get fatigued, and works consistently. Algorithms may not be as smart as humans when faced with ambiguity but as we have seen above algorithms have the potential to bring significant improvements to our day to day commute.
+
+
