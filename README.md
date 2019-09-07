@@ -65,7 +65,3 @@ frame.process_video(file_path, 1,\
 | DIRECTORY  | COLAB |
 | ------------- | ------------- |
 |./notebooks/coPilot.ipynb|https://colab.research.google.com/drive/1CdqDXZqssDgSC35W4A-4Gp8kfqzyPKug|
-
-The front of the dashboard is one hot place. Even when we run a gps and sync music a phone is hot to touch after the 5 hour drive. But phones are getting better faster, rugged, efficient and generate less heat. Unlike the human driver a mobile device does not get fatigued, and works consistently. Algorithms may not be as smart as humans when faced with ambiguity but as we have seen above algorithms have the potential to bring significant improvements to our day to day commute.
-
-
