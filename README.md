@@ -65,3 +65,7 @@ frame.process_video(file_path, 1,\
 | DIRECTORY  | COLAB |
 | ------------- | ------------- |
 |./notebooks/coPilot.ipynb|https://colab.research.google.com/drive/1CdqDXZqssDgSC35W4A-4Gp8kfqzyPKug|
+
+
+## Ref:
+https://github.com/qqwweee/keras-yolo3
